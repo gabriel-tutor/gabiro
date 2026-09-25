@@ -1,7 +1,8 @@
 # Gabiro — Design Spec
 
 **Date:** 2026-09-25
-**Status:** Approved in brainstorming, pending written-spec review
+**Status:** Approved
+**Plans:** `docs/superpowers/plans/2026-09-25-gabiro-plan-1-mcp-server.md` (core → MCP). Plan 2 (canvas) follows.
 
 ## 1. Summary
 
@@ -61,8 +62,9 @@ One npm package, `gabiro`:
 | `layout/` | ELK auto-layout per diagram kind | core |
 | `export/` | Mermaid and Markdown exporters | core |
 | `store/` | `BoardStore` interface + `FileStore` implementation (atomic writes, watch) | core |
-| `mcp/` | MCP tool definitions — thin wrappers over core/store/layout/export | core, store, layout, export |
-| `server/` | Canvas HTTP + WebSocket server, file watcher, REST for canvas edits | core, store, layout, export |
+| `service/` | `BoardService`: the one place combining ops, layout, store and auto-export | core, store, layout, export |
+| `mcp/` | MCP tool definitions — thin wrappers over `service` | service, core |
+| `server/` | Canvas HTTP + WebSocket server, file watcher, REST for canvas edits | service, core |
 | `web/` | React + React Flow canvas, built by Vite into static assets served by `server/` | core (types, ops) |
 
 Both the MCP tools and the canvas apply edits through the same `core` operations, so the same rules apply whoever edits.
@@ -120,7 +122,7 @@ A `sticky` node is allowed on every kind.
 - Node, edge and group IDs are unique within their collection on a board.
 - Edge `from`/`to` reference existing nodes; `groupId` and `parentId` reference existing groups; no group parent cycles.
 - Node, edge and group types must be allowed for the board kind.
-- ERD `fields` only on `entity`; `cardinality` only on `relation`; sequence `message` edges require `order`.
+- ERD `fields` only on `entity`; `cardinality` only on `relation`; sequence `message` edges require `order`; kanban `card` nodes require a `groupId` (their column).
 - Removing a node removes its edges. Removing a group requires it to be empty unless `cascade: true`, which un-groups its children.
 
 Every error states the offending op/entity, the problem, and the fix (valid values, or a suggestion such as "Did you mean an architecture board?").
@@ -152,14 +154,14 @@ All tools are prefixed `gabiro_`, take Zod-validated input, and return a short t
 
 **Summary format** (`get_board` default): one line per group, node and edge, e.g. `node api [service] "Checkout API" (Node/Fastify) in backend`. It's compact so agents keep context small; `json` is for when coordinates are needed.
 
-**`gabiro_open_board`:** checks for a running server via `.gabiro/server.json` (`{pid, port}`) and a health request; if none, spawns `gabiro serve` detached and waits for health. Browser opening uses the platform opener; on failure it just returns the URL.
+**`gabiro_open_board`** (delivered with the canvas in Plan 2; `canvasUrl` fields likewise): checks for a running server via `.gabiro/server.json` (`{pid, port}`) and a health request; if none, spawns `gabiro serve` detached and waits for health. Browser opening uses the platform opener; on failure it just returns the URL.
 
 ## 5. Export
 
 - Config `.gabiro/config.json`: `{ "autoExport": true, "exportDir": "docs/diagrams" }` (defaults if the file is missing).
 - With `autoExport`, every successful write regenerates `<exportDir>/<boardId>.md`, containing the title, a Mermaid code block, and a Markdown list of stickies/descriptions.
 - Mapping: architecture and flowchart → `flowchart` (groups → `subgraph`, dashed edges → `-.->`); sequence → `sequenceDiagram`; erd → `erDiagram`; mindmap → `mindmap`; kanban → `kanban`; freeform → Markdown list only.
-- Labels are escaped for Mermaid; output is deterministic (sorted by id) so git diffs are clean.
+- Labels are escaped for Mermaid; ids map `-` to `_` and Mermaid keywords (e.g. `end`) get a `_` suffix; output is deterministic (sorted by id) so git diffs are clean.
 
 ## 6. Canvas (web)
 
