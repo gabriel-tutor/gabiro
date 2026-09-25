@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-25
 **Status:** Approved
-**Plans:** `docs/superpowers/plans/2026-09-25-gabiro-plan-1-mcp-server.md` (core → MCP). Plan 2 (canvas) follows.
+**Plans:** `docs/superpowers/plans/2026-09-25-gabiro-plan-1-mcp-server.md` (core → MCP, done), `docs/superpowers/plans/2026-09-26-gabiro-plan-2-live-canvas.md` (read-only live canvas + `gabiro_open_board`). Plan 3: manual editing.
 
 ## 1. Summary
 
@@ -70,7 +70,7 @@ One npm package, `gabiro`:
 Both the MCP tools and the canvas apply edits through the same `core` operations, so the same rules apply whoever edits.
 
 ### 2.3 Stack
-TypeScript, Node ≥ 20, `@modelcontextprotocol/sdk`, Zod, elkjs, `@xyflow/react` (React Flow), React, Vite, Vitest, Playwright, chokidar (file watching), ws.
+TypeScript, Node ≥ 20.19, `@modelcontextprotocol/sdk`, Zod, elkjs, `@xyflow/react` (React Flow), React, Vite, Vitest, `playwright-core` (browser tests), Node's `fs.watch` (file watching, no extra dependency), ws.
 
 ## 3. Data model
 
@@ -100,7 +100,7 @@ TypeScript, Node ≥ 20, `@modelcontextprotocol/sdk`, Zod, elkjs, `@xyflow/react
 
 ### 3.2 Entities
 - **Node:** `id`, `type`, `label` (required); optional `description`, `tech`, `groupId`, `tags[]`, `color`, `position {x,y}`, `pinned` (default false), `order` (sequence participants, kanban cards), `fields[]` (ERD only: `{name, type, pk?, fk?, nullable?}`).
-- **Edge:** `id` (default `"<from>-><to>"`, suffixed `#2`, `#3` on collision), `from`, `to`, `type`; optional `label`, `order` (sequence), `style` (`solid` | `dashed`, default by type), `cardinality` (ERD: `1-1` | `1-n` | `n-n`).
+- **Edge:** `id` (default `"<from>-><to>"`, suffixed `#2`, `#3` on collision), `from`, `to`, `type`; optional `label`, `order` (sequence), `style` (`solid` | `dashed`, default by type), `cardinality` (ERD: `1-1` | `1-n` | `n-n`), `points` (route computed by the ELK layout; never set through ops; dropped when an end is pinned — the canvas falls back to its own routing when a route no longer touches both boxes).
 - **Group:** `id`, `label`, `type`; optional `parentId` (nested zones).
 
 IDs are human-readable slugs (`^[a-z0-9][a-z0-9-]*$`, max 64 chars) chosen by the caller.
@@ -169,7 +169,7 @@ All tools are prefixed `gabiro_`, take Zod-validated input, and return a short t
 - **Board** (`/b/:boardId`): React Flow canvas with pan/zoom, minimap, fit-view, light/dark theme.
 - **Rendering:** a custom React component per node type (service box, DB cylinder, queue, cache, cloud for external, diamond for decision, ERD table with field rows, sticky, kanban column/card, sequence lifeline with ordered message rows). Groups are drawn as labelled translucent zones/swimlanes. Edges: solid = sync, dashed = async/return, arrowheads, labels, crow's-foot for ERD cardinality.
 - **Manual editing:** drag (sets `pinned`), double-click to rename, a toolbar palette to add nodes of allowed types, drag between handles to connect, Delete key to remove, side panel for description/tech/fields/tags, Auto-layout button, undo/redo for the user's own edits.
-- **Transport:** the browser subscribes over WebSocket to `board:<id>` and receives full board snapshots (boards are small; no diffing in v1). Edits are sent as ops via `POST /api/boards/:id/ops` with `expectedRevision`. Nodes changed by someone else flash briefly.
+- **Transport:** the browser sends `{type:"subscribe", boardId}` (or `{type:"subscribe-list"}`) over the `/ws` WebSocket and receives full board snapshots (boards are small; no diffing in v1), or `board-error` for missing/corrupt boards. Edits (Plan 3) are sent as ops via `POST /api/boards/:id/ops` with `expectedRevision`. Nodes whose content changed (layout moves excluded) flash briefly.
 - **Conflict in the browser:** on a revision conflict the browser reloads the latest board and re-applies the user's pending op once; if it still fails, it shows the error.
 
 ## 7. Error handling
