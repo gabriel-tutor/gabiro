@@ -1,0 +1,9 @@
+flowchart TB
+  end_(["Done"])
+  send["Send #quot;welcome#quot; mail"]
+  start(["Start"])
+  valid{"Email valid?"}
+  send --> end_
+  start --> valid
+  valid -->|"no"| end_
+  valid -->|"yes"| send

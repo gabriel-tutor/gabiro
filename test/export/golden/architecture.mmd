@@ -1,0 +1,15 @@
+flowchart LR
+  subgraph backend["Backend"]
+    subgraph data["Data"]
+      orders_db[("Orders DB")]
+    end
+    api["Checkout API<br/><i>Node</i>"]
+    events[["Events"]]
+  end
+  note_>"Add a cache?"]
+  stripe{{"Stripe"}}
+  web(["Web App"])
+  api -.->|"order.created"| events
+  api --> orders_db
+  api --> stripe
+  web -->|"HTTPS"| api

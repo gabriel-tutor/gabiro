@@ -1,0 +1,10 @@
+erDiagram
+  orders {
+    uuid id PK
+    uuid user_id FK
+  }
+  users {
+    uuid id PK
+    text email
+  }
+  users ||--o{ orders : "places"
