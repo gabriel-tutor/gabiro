@@ -54,8 +54,9 @@ export class FileStore implements BoardStore {
       }
       throw err;
     }
+    let board: Board;
     try {
-      return validateBoard(JSON.parse(raw));
+      board = validateBoard(JSON.parse(raw));
     } catch (err) {
       const where = relative(this.root, path);
       throw new GabiroError(
@@ -63,6 +64,11 @@ export class FileStore implements BoardStore {
         `Board file ${where} is invalid (${(err as Error).message}). Fix it by hand or delete it; gabiro won't overwrite it.`,
       );
     }
+    if (board.id !== id) {
+      const where = relative(this.root, path);
+      throw new GabiroError("CORRUPT", `Board file ${where} has id "${board.id}". Set its "id" to "${id}" or rename the file.`);
+    }
+    return board;
   }
 
   async create(board: Board): Promise<Board> {

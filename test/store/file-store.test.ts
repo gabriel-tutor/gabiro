@@ -89,6 +89,18 @@ describe("FileStore", () => {
     expect((await s.list())[0]).toMatchObject({ id: "bad", kind: "unknown" });
   });
 
+  it("rejects a board file whose id doesn't match its file name", async () => {
+    const root = await tempRoot();
+    const s = store(root);
+    await s.create(newBoard("alpha"));
+    const raw = await readFile(join(root, ".gabiro/boards/alpha.json"), "utf8");
+    await writeFile(join(root, ".gabiro/boards/beta.json"), raw);
+    await expect(s.get("beta")).rejects.toThrow(
+      /Board file \.gabiro\/boards\/beta\.json has id "alpha"\. Set its "id" to "beta" or rename the file\./,
+    );
+    expect(await code(s.get("beta"))).toBe("CORRUPT");
+  });
+
   it("deletes boards", async () => {
     const s = store(await tempRoot());
     await s.create(newBoard());
@@ -160,5 +172,33 @@ describe("loadConfig", () => {
     await mkdir(join(root, ".gabiro"), { recursive: true });
     await writeFile(join(root, ".gabiro/config.json"), JSON.stringify({ autoExport: false }));
     expect(await loadConfig(root)).toEqual({ autoExport: false, exportDir: "docs/diagrams" });
+  });
+
+  it("accepts a relative exportDir inside the project", async () => {
+    const root = await tempRoot();
+    await mkdir(join(root, ".gabiro"), { recursive: true });
+    await writeFile(join(root, ".gabiro/config.json"), JSON.stringify({ exportDir: "docs/diagrams" }));
+    expect(await loadConfig(root)).toEqual({ autoExport: true, exportDir: "docs/diagrams" });
+  });
+
+  it("rejects an exportDir that escapes the project root", async () => {
+    const root = await tempRoot();
+    await mkdir(join(root, ".gabiro"), { recursive: true });
+    await writeFile(join(root, ".gabiro/config.json"), JSON.stringify({ exportDir: "../escaped" }));
+    await expect(loadConfig(root)).rejects.toThrow(/exportDir must be a relative path inside the project \(got "\.\.\/escaped"\)/);
+  });
+
+  it("rejects an absolute exportDir", async () => {
+    const root = await tempRoot();
+    await mkdir(join(root, ".gabiro"), { recursive: true });
+    await writeFile(join(root, ".gabiro/config.json"), JSON.stringify({ exportDir: "/tmp/x" }));
+    await expect(loadConfig(root)).rejects.toThrow(/exportDir must be a relative path inside the project \(got "\/tmp\/x"\)/);
+  });
+
+  it("rethrows non-ENOENT read errors instead of treating them as missing config", async () => {
+    const root = await tempRoot();
+    // A directory at the config path makes reading it fail with EISDIR, not ENOENT.
+    await mkdir(join(root, ".gabiro", "config.json"), { recursive: true });
+    await expect(loadConfig(root)).rejects.toMatchObject({ code: "EISDIR" });
   });
 });
