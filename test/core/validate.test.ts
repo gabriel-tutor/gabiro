@@ -30,7 +30,7 @@ describe("validateBoard", () => {
 
   it("rejects a node type from another kind and suggests the right kind", () => {
     const b = board("flowchart", { nodes: [{ id: "db", type: "database", label: "DB" }] });
-    expect(() => validateBoard(b)).toThrow(/isn't valid on a flowchart board.*Did you mean a architecture board\?/);
+    expect(() => validateBoard(b)).toThrow(/isn't valid on a flowchart board.*Did you mean an architecture board\?/);
   });
 
   it("allows sticky notes on every kind", () => {
@@ -83,6 +83,16 @@ describe("validateBoard", () => {
     ).toThrow(/needs an "order"/);
     expect(() => validateBoard(board("kanban", { nodes: [{ id: "c", type: "card", label: "C" }] }))).toThrow(
       /must be in a column/,
+    );
+  });
+
+  it("rejects a group id equal to a node id", () => {
+    const b = board("architecture", {
+      groups: [{ id: "shared", label: "Shared", type: "zone" }],
+      nodes: [{ id: "shared", type: "service", label: "Shared" }],
+    });
+    expect(() => validateBoard(b)).toThrow(
+      /Id "shared" is used by both a node and a group\. Node and group ids share one namespace; rename one of them\./,
     );
   });
 

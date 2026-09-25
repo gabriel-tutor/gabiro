@@ -15,7 +15,7 @@ Each op is an object with "op" and these fields:
 - update_node {id, ...fields to change}  (null clears a field)
 - remove_node {id}  (also removes its edges)
 - add_edge {from, to, type, id?, label?, order?, style?: "solid"|"dashed", cardinality?: "1-1"|"1-n"|"n-n"}  (id defaults to "from->to")
-- update_edge {id, ...fields} / remove_edge {id}
+- update_edge {id, ...fields} (from/to can't change: remove the edge and add a new one) / remove_edge {id}
 - add_group {id, label, type, parentId?} / update_group {id, ...fields} / remove_group {id, cascade?}
 Ids are lowercase slugs like "orders-db". Don't send positions; the layout engine places nodes.
 Allowed types by board kind ("sticky" notes are allowed on every kind):

@@ -8,6 +8,9 @@ describe("slugify", () => {
   it("rejects text with no usable characters", () => {
     expect(() => slugify("!!!")).toThrow(/explicit id/);
   });
+  it("strips combining marks left by NFKD normalization", () => {
+    expect(slugify("Crème Brûlée Café")).toBe("creme-brulee-cafe");
+  });
 });
 
 describe("createBoard", () => {

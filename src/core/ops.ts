@@ -35,15 +35,15 @@ const GroupPatch = z.object({
 });
 
 export const OpSchema = z.discriminatedUnion("op", [
-  NodeSchema.extend({ op: z.literal("add_node") }),
-  NodePatch.extend({ op: z.literal("update_node"), id: SlugSchema }),
-  z.object({ op: z.literal("remove_node"), id: SlugSchema }),
-  EdgeSchema.extend({ op: z.literal("add_edge"), id: EdgeSchema.shape.id.optional() }),
-  EdgePatch.extend({ op: z.literal("update_edge"), id: EdgeSchema.shape.id }),
-  z.object({ op: z.literal("remove_edge"), id: EdgeSchema.shape.id }),
-  GroupSchema.extend({ op: z.literal("add_group") }),
-  GroupPatch.extend({ op: z.literal("update_group"), id: SlugSchema }),
-  z.object({ op: z.literal("remove_group"), id: SlugSchema, cascade: z.boolean().optional() }),
+  NodeSchema.extend({ op: z.literal("add_node") }).strict(),
+  NodePatch.extend({ op: z.literal("update_node"), id: SlugSchema }).strict(),
+  z.object({ op: z.literal("remove_node"), id: SlugSchema }).strict(),
+  EdgeSchema.extend({ op: z.literal("add_edge"), id: EdgeSchema.shape.id.optional() }).strict(),
+  EdgePatch.extend({ op: z.literal("update_edge"), id: EdgeSchema.shape.id }).strict(),
+  z.object({ op: z.literal("remove_edge"), id: EdgeSchema.shape.id }).strict(),
+  GroupSchema.extend({ op: z.literal("add_group") }).strict(),
+  GroupPatch.extend({ op: z.literal("update_group"), id: SlugSchema }).strict(),
+  z.object({ op: z.literal("remove_group"), id: SlugSchema, cascade: z.boolean().optional() }).strict(),
 ]);
 export type Op = z.infer<typeof OpSchema>;
 

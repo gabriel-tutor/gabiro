@@ -33,6 +33,12 @@ export function validateBoard(input: unknown): Board {
   const groupIds = new Set(board.groups.map((g) => g.id));
   const nodeIds = new Set(board.nodes.map((n) => n.id));
 
+  for (const id of nodeIds) {
+    if (groupIds.has(id)) {
+      fail(`Id "${id}" is used by both a node and a group. Node and group ids share one namespace; rename one of them.`);
+    }
+  }
+
   for (const g of board.groups) {
     if (!rules.groupTypes.includes(g.type)) {
       fail(`Group type "${g.type}" isn't valid on a ${board.kind} board. Valid group types: ${list(rules.groupTypes)}.`);
@@ -54,7 +60,8 @@ export function validateBoard(input: unknown): Board {
   for (const n of board.nodes) {
     if (!rules.nodeTypes.includes(n.type)) {
       const other = kindsAllowingNodeType(n.type);
-      const hint = other.length ? ` Did you mean a ${other.join(" or ")} board?` : "";
+      const article = (w: string) => (/^[aeiou]/i.test(w) ? "an" : "a");
+      const hint = other.length ? ` Did you mean ${other.map((k) => `${article(k)} ${k}`).join(" or ")} board?` : "";
       fail(`Node type "${n.type}" isn't valid on a ${board.kind} board. Valid node types: ${list(rules.nodeTypes)}.${hint}`);
     }
     if (n.groupId !== undefined && !groupIds.has(n.groupId)) {

@@ -13,7 +13,7 @@ function nodeLine(n: BoardNode): string {
     const fields = n.fields.map((f) => `${f.name}:${f.type}${f.pk ? " PK" : ""}${f.fk ? " FK" : ""}${f.nullable ? "?" : ""}`);
     line += ` fields=[${fields.join(", ")}]`;
   }
-  if (n.description) line += ` — ${n.description}`;
+  if (n.description) line += ` — ${n.description.replace(/\s*\r?\n\s*/g, " ")}`;
   return line;
 }
 

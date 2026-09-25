@@ -55,6 +55,20 @@ describe("applyOps", () => {
     expect(() => applyOps(empty(), [{ op: "explode" }])).toThrow(/Op #0 is malformed/);
   });
 
+  it("rejects unknown op fields instead of silently dropping them", () => {
+    const withEdge = applyOps(empty(), [
+      { op: "add_node", id: "a", type: "service", label: "A" },
+      { op: "add_node", id: "b", type: "service", label: "B" },
+      { op: "add_edge", from: "a", to: "b", type: "sync" },
+    ]);
+    expect(() => applyOps(withEdge, [{ op: "update_edge", id: "a->b", to: "a" }])).toThrow(
+      /Op #0 is malformed.*"to"/,
+    );
+    expect(() => applyOps(empty(), [{ op: "add_node", id: "a", type: "service", label: "A", groupID: "g" }])).toThrow(
+      /Op #0 is malformed.*"groupID"/,
+    );
+  });
+
   it("updates fields and clears them with null", () => {
     const b = applyOps(empty(), [
       { op: "add_group", id: "g", label: "G", type: "zone" },

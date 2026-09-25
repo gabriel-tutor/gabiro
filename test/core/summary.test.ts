@@ -1,6 +1,13 @@
 import { expect, it } from "vitest";
 import { applyOps, createBoard, summarizeBoard } from "../../src/core/index.js";
 
+it("collapses newlines in a node description to spaces", () => {
+  const b = applyOps(createBoard({ title: "Shop", kind: "architecture", id: "shop" }), [
+    { op: "add_node", id: "api", type: "service", label: "API", description: "Line one\n  Line two\r\nLine three" },
+  ]);
+  expect(summarizeBoard(b)).toContain('node api [service] "API" — Line one Line two Line three');
+});
+
 it("summarizes a board one line per entity", () => {
   const b = applyOps(createBoard({ title: "Shop", kind: "architecture", id: "shop" }), [
     { op: "add_group", id: "backend", label: "Backend", type: "zone" },
