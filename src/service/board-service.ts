@@ -2,8 +2,8 @@ import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { applyOps, createBoard, GabiroError, type Board, type Direction, type Kind } from "../core/index.js";
 import { toMarkdown, toMermaid } from "../export/index.js";
-import { layoutBoard } from "../layout/index.js";
-import { FileStore, loadConfig, writeFileAtomic, type BoardListItem, type BoardStore } from "../store/index.js";
+import { layoutBoard, type LayoutMode } from "../layout/index.js";
+import { FileStore, loadConfig, writeFileAtomic, type BoardListItem, type BoardStore, type GabiroConfig } from "../store/index.js";
 
 export interface CreateBoardInput {
   title: string;
@@ -14,6 +14,29 @@ export interface CreateBoardInput {
 }
 
 export type ExportFormat = "mermaid" | "markdown";
+
+/** A save that committed, with an optional non-fatal warning if the follow-up auto-export write failed. */
+export interface SaveResult {
+  board: Board;
+  exportWarning?: string;
+}
+
+const STRUCTURAL_OPS = new Set(["add_edge", "remove_edge", "add_group", "update_group", "remove_group", "remove_node"]);
+const STRUCTURAL_PATCH_KEYS = new Set(["groupId", "order"]);
+
+/** True when any op in the batch changes board structure enough to warrant a full re-layout ("all" mode). */
+export function changesStructure(ops: unknown[]): boolean {
+  return ops.some((raw) => {
+    if (typeof raw !== "object" || raw === null) return false;
+    const op = (raw as Record<string, unknown>).op;
+    if (typeof op !== "string") return false;
+    if (STRUCTURAL_OPS.has(op)) return true;
+    if (op === "update_node" || op === "update_edge") {
+      return Object.keys(raw as Record<string, unknown>).some((key) => STRUCTURAL_PATCH_KEYS.has(key));
+    }
+    return false;
+  });
+}
 
 /**
  * The one place that combines ops, layout, storage and export.
@@ -33,38 +56,39 @@ export class BoardService {
     return this.store.get(id);
   }
 
-  async create(input: CreateBoardInput): Promise<Board> {
+  async create(input: CreateBoardInput): Promise<SaveResult> {
+    const config = await loadConfig(this.root);
     let board = createBoard(input);
     if (input.ops?.length) board = applyOps(board, input.ops);
     const saved = await this.store.create(await layoutBoard(board));
-    await this.autoExport(saved);
-    return saved;
+    return { board: saved, exportWarning: await this.autoExport(saved, config) };
   }
 
-  async applyChanges(id: string, ops: unknown[], expectedRevision?: number): Promise<Board> {
-    const saved = await this.store.update(id, (b) => layoutBoard(applyOps(b, ops)), expectedRevision);
-    await this.autoExport(saved);
-    return saved;
+  async applyChanges(id: string, ops: unknown[], expectedRevision?: number): Promise<SaveResult> {
+    const config = await loadConfig(this.root);
+    const mode: LayoutMode = changesStructure(ops) ? "all" : "auto";
+    const saved = await this.store.update(id, (b) => layoutBoard(applyOps(b, ops), mode), expectedRevision);
+    return { board: saved, exportWarning: await this.autoExport(saved, config) };
   }
 
-  async updateBoard(id: string, changes: { title?: string; direction?: Direction }): Promise<Board> {
+  async updateBoard(id: string, changes: { title?: string; direction?: Direction }): Promise<SaveResult> {
+    const config = await loadConfig(this.root);
     const saved = await this.store.update(id, (b) => {
       const next: Board = { ...b, title: changes.title ?? b.title, layout: { direction: changes.direction ?? b.layout.direction } };
       return next.layout.direction !== b.layout.direction ? layoutBoard(next, "all") : next;
     });
-    await this.autoExport(saved);
-    return saved;
+    return { board: saved, exportWarning: await this.autoExport(saved, config) };
   }
 
-  async autoLayout(id: string, force = false): Promise<Board> {
+  async autoLayout(id: string, force = false): Promise<SaveResult> {
+    const config = await loadConfig(this.root);
     const saved = await this.store.update(id, (b) => layoutBoard(b, force ? "force" : "all"));
-    await this.autoExport(saved);
-    return saved;
+    return { board: saved, exportWarning: await this.autoExport(saved, config) };
   }
 
   async delete(id: string): Promise<void> {
-    await this.store.delete(id);
     const config = await loadConfig(this.root);
+    await this.store.delete(id);
     await rm(join(this.root, config.exportDir, `${id}.md`), { force: true });
   }
 
@@ -88,8 +112,14 @@ export class BoardService {
     return { content, path };
   }
 
-  private async autoExport(board: Board): Promise<void> {
-    const config = await loadConfig(this.root);
-    if (config.autoExport) await writeFileAtomic(join(this.root, config.exportDir, `${board.id}.md`), toMarkdown(board));
+  /** Writes the Markdown auto-export. Never throws: a failure here is reported as a warning, not a failed save. */
+  private async autoExport(board: Board, config: GabiroConfig): Promise<string | undefined> {
+    if (!config.autoExport) return undefined;
+    try {
+      await writeFileAtomic(join(this.root, config.exportDir, `${board.id}.md`), toMarkdown(board));
+      return undefined;
+    } catch (err) {
+      return (err as Error).message;
+    }
   }
 }

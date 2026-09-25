@@ -18,6 +18,11 @@ function option(args: string[], name: string): string | undefined {
 
 async function main(argv: string[]): Promise<void> {
   const [command, ...args] = argv;
+  if (args.includes("--root") && option(args, "--root") === undefined) {
+    console.error("--root needs a directory");
+    process.exitCode = 1;
+    return;
+  }
   const root = resolve(option(args, "--root") ?? process.cwd());
   switch (command) {
     case "mcp":

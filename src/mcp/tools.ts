@@ -34,6 +34,15 @@ function changeReport(board: Board, before?: Board): Payload {
   return { text, data: { boardId: board.id, revision: board.revision, ...after } };
 }
 
+/** Appends a non-fatal auto-export warning to a payload, when there is one. */
+function withExportWarning(payload: Payload, exportWarning?: string): Payload {
+  if (!exportWarning) return payload;
+  return {
+    text: `${payload.text} Saved, but auto-export failed: ${exportWarning}`,
+    data: { ...payload.data, exportWarning },
+  };
+}
+
 const opsParam = z.array(z.object({ op: z.string() }).passthrough()).describe(OPS_HELP);
 const boardIdParam = SlugSchema.describe('Board id, e.g. "checkout-architecture" (see gabiro_list_boards)');
 
@@ -77,9 +86,9 @@ export function registerTools(server: McpServer, service: BoardService): void {
     },
     ({ title, kind, id, direction, ops }) =>
       run(async () => {
-        const board = await service.create({ title, kind, id, direction, ops });
-        const report = changeReport(board);
-        return { text: `${report.text}\n\n${summarizeBoard(board)}`, data: report.data };
+        const result = await service.create({ title, kind, id, direction, ops });
+        const report = changeReport(result.board);
+        return withExportWarning({ text: `${report.text}\n\n${summarizeBoard(result.board)}`, data: report.data }, result.exportWarning);
       }),
   );
 
@@ -128,8 +137,8 @@ export function registerTools(server: McpServer, service: BoardService): void {
     ({ boardId, ops, expectedRevision }) =>
       run(async () => {
         const before = await service.get(boardId);
-        const after = await service.applyChanges(boardId, ops, expectedRevision);
-        return changeReport(after, before);
+        const result = await service.applyChanges(boardId, ops, expectedRevision);
+        return withExportWarning(changeReport(result.board, before), result.exportWarning);
       }),
   );
 
@@ -145,7 +154,11 @@ export function registerTools(server: McpServer, service: BoardService): void {
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
-    ({ boardId, title, direction }) => run(async () => changeReport(await service.updateBoard(boardId, { title, direction }))),
+    ({ boardId, title, direction }) =>
+      run(async () => {
+        const result = await service.updateBoard(boardId, { title, direction });
+        return withExportWarning(changeReport(result.board), result.exportWarning);
+      }),
   );
 
   server.registerTool(
@@ -159,7 +172,11 @@ export function registerTools(server: McpServer, service: BoardService): void {
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
-    ({ boardId, force }) => run(async () => changeReport(await service.autoLayout(boardId, force))),
+    ({ boardId, force }) =>
+      run(async () => {
+        const result = await service.autoLayout(boardId, force);
+        return withExportWarning(changeReport(result.board), result.exportWarning);
+      }),
   );
 
   server.registerTool(
