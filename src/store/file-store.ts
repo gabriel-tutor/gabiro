@@ -68,7 +68,13 @@ export class FileStore implements BoardStore {
   async create(board: Board): Promise<Board> {
     const path = this.pathFor(board.id);
     return withFileLock(`${path}.lock`, async () => {
-      const exists = await readFile(path).then(() => true, () => false);
+      let exists = false;
+      try {
+        await readFile(path);
+        exists = true;
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+      }
       if (exists) {
         throw new GabiroError("EXISTS", `Board "${board.id}" already exists. Pick another id, or edit it with gabiro_apply_changes.`);
       }

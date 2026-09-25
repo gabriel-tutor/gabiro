@@ -96,6 +96,17 @@ describe("FileStore", () => {
     expect(await s.list()).toEqual([]);
     expect(await code(s.delete("shop"))).toBe("NOT_FOUND");
   });
+
+  it("create rejects EISDIR (directory exists at path, not just any error)", async () => {
+    const root = await tempRoot();
+    const s = store(root);
+    // Create .gabiro/boards/shop.json as a DIRECTORY
+    await mkdir(join(root, ".gabiro/boards/shop.json"), { recursive: true });
+    // store.create() must reject, and the directory must still exist
+    await expect(s.create(newBoard())).rejects.toThrow();
+    const stat = await import("node:fs/promises").then(fs => fs.stat(join(root, ".gabiro/boards/shop.json")));
+    expect(stat.isDirectory()).toBe(true);
+  });
 });
 
 describe("withFileLock", () => {
@@ -106,6 +117,39 @@ describe("withFileLock", () => {
     const old = new Date(Date.now() - 60_000);
     await utimes(lock, old, old);
     expect(await withFileLock(lock, async () => "got it", 5000)).toBe("got it");
+  });
+
+  it("lock ownership: doesn't delete another writer's lock", async () => {
+    const root = await tempRoot();
+    const lock = join(root, "x.lock");
+    await writeFile(lock, "");
+    const old = new Date(Date.now() - 60_000);
+    await utimes(lock, old, old);
+    await withFileLock(lock, async () => {
+      // Simulate another writer taking over the lock
+      await writeFile(lock, "other-token");
+    }, 5000);
+    // After withFileLock resolves, the lock file must still exist with the other token
+    const content = await readFile(lock, "utf8");
+    expect(content).toBe("other-token");
+  });
+
+  it("lock timeout throws GabiroError with CONFLICT code", async () => {
+    const root = await tempRoot();
+    const lock = join(root, "x.lock");
+    await writeFile(lock, "");
+    // Keep refreshing the lock's mtime so it never goes stale
+    const interval = setInterval(async () => {
+      const now = new Date();
+      await utimes(lock, now, now).catch(() => {});
+    }, 10);
+    try {
+      await expect(withFileLock(lock, async () => "got it", 50)).rejects.toThrow();
+      const error = await code(withFileLock(lock, async () => "got it", 50));
+      expect(error).toBe("CONFLICT");
+    } finally {
+      clearInterval(interval);
+    }
   });
 });
 
