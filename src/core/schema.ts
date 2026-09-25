@@ -40,6 +40,8 @@ export const EdgeSchema = z.object({
   order: z.number().int().optional(),
   style: z.enum(["solid", "dashed"]).optional(),
   cardinality: z.enum(["1-1", "1-n", "n-n"]).optional(),
+  /** Route computed by the layout engine (start, bends, end). Never set by agents or users. */
+  points: z.array(PositionSchema).optional(),
 });
 
 export const GroupSchema = z.object({

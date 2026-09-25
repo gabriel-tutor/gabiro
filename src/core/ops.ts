@@ -38,7 +38,7 @@ export const OpSchema = z.discriminatedUnion("op", [
   NodeSchema.extend({ op: z.literal("add_node") }).strict(),
   NodePatch.extend({ op: z.literal("update_node"), id: SlugSchema }).strict(),
   z.object({ op: z.literal("remove_node"), id: SlugSchema }).strict(),
-  EdgeSchema.extend({ op: z.literal("add_edge"), id: EdgeSchema.shape.id.optional() }).strict(),
+  EdgeSchema.omit({ points: true }).extend({ op: z.literal("add_edge"), id: EdgeSchema.shape.id.optional() }).strict(),
   EdgePatch.extend({ op: z.literal("update_edge"), id: EdgeSchema.shape.id }).strict(),
   z.object({ op: z.literal("remove_edge"), id: EdgeSchema.shape.id }).strict(),
   GroupSchema.extend({ op: z.literal("add_group") }).strict(),
