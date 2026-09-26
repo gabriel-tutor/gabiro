@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { canvasUrl, ensureCanvasServer, isLocalCanvasUrl, openInBrowser, startCanvasServer, type CanvasServer } from "../../src/server/index.js";
@@ -42,6 +42,48 @@ describe("ensureCanvasServer", () => {
     const s = await startCanvasServer({ root, port: 0, webDir: root });
     servers.push(s);
     expect(await ensureCanvasServer(root, { cliPath: "/definitely/missing/cli.js" })).toBe(s.url);
+  });
+
+  it("fails fast when the spawned server exits before becoming healthy", async () => {
+    const root = await tempRoot();
+    const cliPath = join(root, "crash.mjs");
+    await writeFile(cliPath, "process.exit(1);\n");
+    const started = Date.now();
+    const err = await ensureCanvasServer(root, { cliPath }).catch((e) => e);
+    expect(Date.now() - started).toBeLessThan(3000);
+    expect(err).toBeInstanceOf(GabiroError);
+    expect(err.code).toBe("UNAVAILABLE");
+    expect(err.message).toMatch(/gabiro serve --root/);
+  });
+
+  it("serializes concurrent starts with a lock so only one server is spawned", async () => {
+    const root = await tempRoot();
+    // A fake CLI that records each spawn, then serves health for this root like `gabiro serve`.
+    const cliPath = join(root, "fake-cli.mjs");
+    await writeFile(
+      cliPath,
+      [
+        `import { appendFileSync, writeFileSync } from "node:fs";`,
+        `import { createServer } from "node:http";`,
+        `import { join } from "node:path";`,
+        `const root = process.argv[process.argv.indexOf("--root") + 1];`,
+        `appendFileSync(join(root, "spawns.log"), process.argv.slice(2).join(" ") + "\\n");`,
+        `const s = createServer((req, res) => res.end(JSON.stringify({ ok: true, root, version: "x", pid: process.pid })));`,
+        `s.listen(0, "127.0.0.1", () => {`,
+        `  const url = "http://127.0.0.1:" + s.address().port;`,
+        `  writeFileSync(join(root, ".gabiro/server.json"), JSON.stringify({ pid: process.pid, port: s.address().port, url, root }));`,
+        `});`,
+        `setTimeout(() => process.exit(0), 5000); // never outlive the test`,
+      ].join("\n"),
+    );
+    await mkdir(join(root, ".gabiro"), { recursive: true });
+    const [a, b] = await Promise.all([ensureCanvasServer(root, { cliPath }), ensureCanvasServer(root, { cliPath })]);
+    expect(a).toBe(b);
+    const spawns = (await readFile(join(root, "spawns.log"), "utf8")).trim().split("\n");
+    expect(spawns).toHaveLength(1);
+    expect(spawns[0]).toContain("--idle-exit 30");
+    const info = JSON.parse(await readFile(join(root, ".gabiro/server.json"), "utf8"));
+    process.kill(info.pid, "SIGTERM");
   });
 
   it("explains how to fix a missing build instead of spawning", async () => {

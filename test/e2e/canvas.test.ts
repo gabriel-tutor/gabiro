@@ -27,19 +27,35 @@ describe.skipIf(!built)("canvas end-to-end (run `npm run build` first)", () => {
   it("`gabiro serve` prints its URL, serves the app, and cleans up on SIGTERM", async () => {
     const root = await tempRoot();
     const child = spawn(process.execPath, [cli, "serve", "--root", root, "--port", "0"]);
-    const url = await new Promise<string>((resolve, reject) => {
-      child.stdout.on("data", (chunk: Buffer) => {
-        const m = /running at (http:\/\/\S+)/.exec(chunk.toString());
-        if (m) resolve(m[1]!);
+    try {
+      const url = await new Promise<string>((resolve, reject) => {
+        child.stdout.on("data", (chunk: Buffer) => {
+          const m = /running at (http:\/\/\S+)/.exec(chunk.toString());
+          if (m) resolve(m[1]!);
+        });
+        child.once("exit", (code) => reject(new Error(`serve exited early with ${code}`)));
       });
-      child.once("exit", (code) => reject(new Error(`serve exited early with ${code}`)));
-    });
-    expect(await health(url)).toMatchObject({ ok: true, root });
-    expect(await (await fetch(`${url}/b/anything`)).text()).toContain('<div id="root">');
-    const exited = new Promise<number | null>((r) => child.once("exit", r));
-    child.kill("SIGTERM");
-    expect(await exited).toBe(0);
-    expect(existsSync(join(root, ".gabiro/server.json"))).toBe(false);
+      expect(await health(url)).toMatchObject({ ok: true, root });
+      expect(await (await fetch(`${url}/b/anything`)).text()).toContain('<div id="root">');
+      const exited = new Promise<number | null>((r) => child.once("exit", r));
+      child.kill("SIGTERM");
+      expect(await exited).toBe(0);
+      expect(existsSync(join(root, ".gabiro/server.json"))).toBe(false);
+    } finally {
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    }
+  }, 20_000);
+
+  it("`gabiro serve --idle-exit` stops on its own when no canvas is open", async () => {
+    const root = await tempRoot();
+    const child = spawn(process.execPath, [cli, "serve", "--root", root, "--port", "0", "--idle-exit", "0.005"]);
+    try {
+      const code = await new Promise<number | null>((r) => child.once("exit", r));
+      expect(code).toBe(0);
+      expect(existsSync(join(root, ".gabiro/server.json"))).toBe(false);
+    } finally {
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    }
   }, 20_000);
 
   it("gabiro_open_board starts a detached canvas server for the project", async () => {
