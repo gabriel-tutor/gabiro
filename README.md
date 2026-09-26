@@ -35,6 +35,8 @@ To watch the diagram, ask "open it in gabiro" (the agent calls `gabiro_open_boar
 node /absolute/path/to/gabiro/dist/cli.js serve --open   # http://127.0.0.1:4477, next free port if taken
 ```
 
+A canvas started by `gabiro_open_board` stops after 30 minutes with no canvas tab open; `gabiro serve` runs until you stop it (or pass `--idle-exit <minutes>`). The server only answers on 127.0.0.1/localhost.
+
 The canvas updates live as the agent changes a board, and highlights what just changed. The same diagrams are in `docs/diagrams/<board>.md`, which renders on GitHub and in VS Code's Markdown preview.
 
 ## Tools

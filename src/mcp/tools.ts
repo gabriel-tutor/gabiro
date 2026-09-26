@@ -228,9 +228,9 @@ export function registerTools(server: McpServer, service: BoardService, canvas: 
     {
       title: "Open canvas",
       description:
-        "Show a board (or the board list) in the live browser canvas, starting the local canvas server if needed. The canvas updates live as boards change.",
+        "Show a board (or the board list) in the live browser canvas, starting the local canvas server if needed. The canvas updates live as boards change. Starts a local server on 127.0.0.1 if none is running.",
       inputSchema: { boardId: boardIdParam.optional().describe("Board to show; omit for the list of boards") },
-      annotations: { readOnlyHint: true, openWorldHint: false },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     ({ boardId }) =>
       run(async () => {

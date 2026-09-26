@@ -55,6 +55,9 @@ describe("gabiro MCP server", () => {
     ]);
     expect(tools.find((t) => t.name === "gabiro_get_board")!.annotations?.readOnlyHint).toBe(true);
     expect(tools.find((t) => t.name === "gabiro_delete_board")!.annotations?.destructiveHint).toBe(true);
+    const open = tools.find((t) => t.name === "gabiro_open_board")!;
+    expect(open.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false });
+    expect(open.description).toMatch(/Starts a local server on 127\.0\.0\.1 if none is running\.$/);
     expect(tools.find((t) => t.name === "gabiro_create_board")!.inputSchema.properties).toHaveProperty("ops");
     expect(client.getInstructions()).toContain("gabiro_create_board");
   });

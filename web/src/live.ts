@@ -25,7 +25,12 @@ export class LiveClient {
       this.statusListeners.forEach((l) => l(true));
     };
     ws.onmessage = (event) => {
-      const msg = JSON.parse(String(event.data)) as ServerMessage;
+      let msg: ServerMessage;
+      try {
+        msg = JSON.parse(String(event.data)) as ServerMessage;
+      } catch {
+        return; // ignore a bad frame rather than break the socket handler
+      }
       this.listeners.forEach((l) => l(msg));
     };
     ws.onclose = () => {
