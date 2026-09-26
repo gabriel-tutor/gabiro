@@ -67,6 +67,7 @@ describe("toFlow", () => {
     expect(ys).toEqual([...ys].sort((a, b) => a - b));
     expect(edges[2]!.data).toMatchObject({ dashed: true, label: "201 Created" });
     const client = nodes.find((n) => n.id === "client")!;
+    expect(client.type).toBe("participant");
     expect(client.height).toBeGreaterThan(ys.at(-1)! + MESSAGE_GAP / 2);
   });
 
