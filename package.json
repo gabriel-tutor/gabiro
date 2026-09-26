@@ -14,9 +14,10 @@
     "node": ">=20.19"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "build": "tsc -p tsconfig.build.json && vite build",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p web",
+    "test": "vitest run",
+    "dev:web": "vite"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.1",
