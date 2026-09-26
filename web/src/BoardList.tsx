@@ -12,7 +12,7 @@ export function BoardList() {
         {boards === undefined && <p className="gb-empty">Loading…</p>}
         {boards?.length === 0 && (
           <p className="gb-empty">
-            No boards yet. Ask your agent to create one, e.g. "Map this repo's architecture as a gabiro board."
+            No boards yet. Ask your agent to create one, e.g. “Map this repo’s architecture as a gabiro board.”
           </p>
         )}
         <ul>
