@@ -6,12 +6,15 @@ import { GabiroError } from "../core/index.js";
 import { BoardService } from "../service/index.js";
 import { VERSION } from "../version.js";
 import { clearServerInfo, writeServerInfo } from "./info.js";
-import type { ClientMessage, HealthResponse, ServerMessage } from "./protocol.js";
+import { parseClientMessage } from "./client-message.js";
+import type { HealthResponse, ServerMessage } from "./protocol.js";
 import { serveStatic } from "./static.js";
 import { watchBoards } from "./watch.js";
 
 export const DEFAULT_PORT = 4477;
 const PORT_ATTEMPTS = 20;
+/** Board subscriptions allowed per WebSocket; further subscribe messages are ignored. */
+export const MAX_SUBSCRIPTIONS = 50;
 
 export interface CanvasServerOptions {
   root: string;
@@ -22,6 +25,9 @@ export interface CanvasServerOptions {
   webDir?: string;
   /** Write .gabiro/server.json so MCP tools can find this server. Default true. */
   recordInfo?: boolean;
+  /** Call `onIdle` after this many ms without any WebSocket client (including right after start). Off by default. */
+  idleExitMs?: number;
+  onIdle?: () => void;
 }
 
 export interface CanvasServer {
@@ -64,8 +70,22 @@ export async function startCanvasServer(options: CanvasServerOptions): Promise<C
   const { root, host = "127.0.0.1", recordInfo = true } = options;
   const webDir = options.webDir ?? defaultWebDir();
   const service = new BoardService(root);
+  /** The bound port; set once listening. Host/Origin allowlists are tied to it. */
+  let port = -1;
 
-  const http = createServer((req, res) => {
+  // Only accept requests addressed to this loopback server, which blocks DNS rebinding,
+  // and WebSocket upgrades from its own pages (or non-browser clients without an Origin).
+  const allowedHosts = () => [`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`];
+  const hostAllowed = (req: IncomingMessage) => req.headers.host !== undefined && allowedHosts().includes(req.headers.host);
+  const originAllowed = (req: IncomingMessage) =>
+    req.headers.origin === undefined || allowedHosts().some((h) => req.headers.origin === `http://${h}`);
+
+  // requireHostHeader: false lets the Host check below answer a missing Host with the same 403.
+  const http = createServer({ requireHostHeader: false }, (req, res) => {
+    if (!hostAllowed(req)) {
+      sendJson(res, 403, { code: "FORBIDDEN", error: `Unexpected Host header. Open the canvas at http://127.0.0.1:${port}.` });
+      return;
+    }
     handleHttp(req, res).catch((err) => sendJson(res, 500, { code: "INTERNAL", error: (err as Error).message }));
   });
 
@@ -120,6 +140,11 @@ export async function startCanvasServer(options: CanvasServerOptions): Promise<C
   }
 
   http.on("upgrade", (req, socket, head) => {
+    if (!hostAllowed(req) || !originAllowed(req)) {
+      socket.end("HTTP/1.1 403 Forbidden\r\n\r\n");
+      socket.destroy();
+      return;
+    }
     if (new URL(req.url ?? "/", "http://localhost").pathname !== "/ws") {
       socket.destroy();
       return;
@@ -127,44 +152,64 @@ export async function startCanvasServer(options: CanvasServerOptions): Promise<C
     wss.handleUpgrade(req, socket, head, (ws) => wss.emit("connection", ws, req));
   });
 
+  // --- idle exit -----------------------------------------------------------
+  let idleTimer: NodeJS.Timeout | undefined;
+  const armIdle = () => {
+    if (options.idleExitMs === undefined || idleTimer || boardSubs.size > 0) return;
+    idleTimer = setTimeout(() => {
+      idleTimer = undefined;
+      options.onIdle?.();
+    }, options.idleExitMs);
+  };
+  const disarmIdle = () => {
+    clearTimeout(idleTimer);
+    idleTimer = undefined;
+  };
+
   wss.on("connection", (ws) => {
     boardSubs.set(ws, new Set());
+    disarmIdle();
     ws.on("close", () => {
       boardSubs.delete(ws);
       listSubs.delete(ws);
+      armIdle();
     });
     ws.on("message", async (raw) => {
-      let msg: ClientMessage;
       try {
-        msg = JSON.parse(raw.toString()) as ClientMessage;
-      } catch {
-        return;
-      }
-      if (msg.type === "subscribe" && typeof msg.boardId === "string") {
-        boardSubs.get(ws)?.add(msg.boardId);
-        send(ws, await boardMessage(msg.boardId));
-      } else if (msg.type === "subscribe-list") {
-        listSubs.add(ws);
-        send(ws, { type: "boards", boards: await service.list() });
+        const msg = parseClientMessage(raw.toString());
+        if (msg?.type === "subscribe") {
+          const ids = boardSubs.get(ws);
+          if (!ids || (!ids.has(msg.boardId) && ids.size >= MAX_SUBSCRIPTIONS)) return;
+          ids.add(msg.boardId);
+          send(ws, await boardMessage(msg.boardId));
+        } else if (msg?.type === "subscribe-list") {
+          listSubs.add(ws);
+          send(ws, { type: "boards", boards: await service.list() });
+        }
+      } catch (err) {
+        console.error("gabiro canvas: failed to handle a WebSocket message:", err);
       }
     });
   });
 
   const stopWatching = watchBoards(join(root, ".gabiro", "boards"), async (boardId) => {
-    const watchers = [...boardSubs].filter(([, ids]) => ids.has(boardId)).map(([ws]) => ws);
-    if (watchers.length) {
-      const msg = await boardMessage(boardId);
-      for (const ws of watchers) send(ws, msg);
-    }
-    if (listSubs.size) {
-      const msg: ServerMessage = { type: "boards", boards: await service.list() };
-      for (const ws of listSubs) send(ws, msg);
+    try {
+      const watchers = [...boardSubs].filter(([, ids]) => ids.has(boardId)).map(([ws]) => ws);
+      if (watchers.length) {
+        const msg = await boardMessage(boardId);
+        for (const ws of watchers) send(ws, msg);
+      }
+      if (listSubs.size) {
+        const msg: ServerMessage = { type: "boards", boards: await service.list() };
+        for (const ws of listSubs) send(ws, msg);
+      }
+    } catch (err) {
+      console.error(`gabiro canvas: failed to push changes to board "${boardId}":`, err);
     }
   });
 
   // --- listen, falling back to the next free port --------------------------
   const firstPort = options.port ?? DEFAULT_PORT;
-  let port = -1;
   for (let attempt = 0; attempt < (firstPort === 0 ? 1 : PORT_ATTEMPTS); attempt++) {
     try {
       port = await listen(http, firstPort === 0 ? 0 : firstPort + attempt, host);
@@ -186,11 +231,13 @@ export async function startCanvasServer(options: CanvasServerOptions): Promise<C
 
   const url = `http://${host === "0.0.0.0" ? "localhost" : host}:${port}`;
   if (recordInfo) await writeServerInfo({ pid: process.pid, port, url, root });
+  armIdle();
 
   return {
     url,
     port,
     async close() {
+      disarmIdle();
       stopWatching();
       for (const ws of wss.clients) ws.terminate();
       wss.close();

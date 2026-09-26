@@ -9,8 +9,9 @@ export default defineConfig({
   build: { outDir: "../dist/web", emptyOutDir: true },
   server: {
     proxy: {
-      "/api": "http://127.0.0.1:4477",
-      "/ws": { target: "ws://127.0.0.1:4477", ws: true },
+      // The canvas server only accepts its own Host and Origin, so rewrite both.
+      "/api": { target: "http://127.0.0.1:4477", changeOrigin: true },
+      "/ws": { target: "ws://127.0.0.1:4477", ws: true, changeOrigin: true, headers: { origin: "http://127.0.0.1:4477" } },
     },
   },
 });

@@ -8,7 +8,9 @@ const USAGE = `gabiro ${VERSION}
 
 Usage:
   gabiro mcp [--root <dir>]                       Run the MCP server over stdio
-  gabiro serve [--root <dir>] [--port <n>] [--open] Run the live canvas (default port ${DEFAULT_PORT})
+  gabiro serve [--root <dir>] [--port <n>] [--open] [--idle-exit <minutes>]
+                                                  Run the live canvas (default port ${DEFAULT_PORT});
+                                                  --idle-exit stops it after that long with no open canvas
 
 The project root defaults to the current directory.
 
@@ -40,10 +42,32 @@ async function main(argv: string[]): Promise<void> {
         process.exitCode = 1;
         return;
       }
-      const server = await startCanvasServer({ root, port });
+      const idleArg = option(args, "--idle-exit");
+      const idleMinutes = idleArg === undefined ? undefined : Number(idleArg);
+      if (args.includes("--idle-exit") && !(idleMinutes !== undefined && Number.isFinite(idleMinutes) && idleMinutes > 0)) {
+        console.error(`--idle-exit needs a number of minutes greater than 0 (got "${idleArg}")`);
+        process.exitCode = 1;
+        return;
+      }
+      // Last line of defence: a stray rejection must not take the canvas down.
+      process.on("unhandledRejection", (err) => console.error("gabiro canvas:", err));
+      let stopping = false;
+      const stop = () => {
+        if (stopping) return;
+        stopping = true;
+        void server.close().then(() => process.exit(0));
+      };
+      const server = await startCanvasServer({
+        root,
+        port,
+        idleExitMs: idleMinutes === undefined ? undefined : idleMinutes * 60_000,
+        onIdle: () => {
+          console.log("gabiro canvas: no open canvas, stopping (--idle-exit)");
+          stop();
+        },
+      });
       console.log(`gabiro canvas running at ${server.url} (project root: ${root})`);
       if (args.includes("--open")) openInBrowser(server.url);
-      const stop = () => void server.close().then(() => process.exit(0));
       process.once("SIGINT", stop);
       process.once("SIGTERM", stop);
       return;
