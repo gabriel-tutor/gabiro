@@ -2,7 +2,7 @@
 
 A free, self-hosted, agent-first diagram tool. AI agents (Claude Code, Claude Desktop, Cursor, …) call gabiro's MCP tools to draw your system as **architecture, flowchart, sequence, ERD, mind map, freeform and kanban** boards. Boards are JSON files in your repo (`.gabiro/boards/`), and every change is auto-exported to Mermaid Markdown (`docs/diagrams/`) so it renders on GitHub and lives in git next to the code.
 
-> The live browser canvas is coming in the next milestone. Today you get the MCP server plus Mermaid exports.
+A local browser canvas shows every board live while the agent works on it.
 
 ## Install (from source)
 
@@ -29,7 +29,13 @@ Ask your agent things like:
 - "Make an ERD of the Prisma schema."
 - "Add a Redis cache between the API and Postgres, and a sticky note about invalidation."
 
-Then open `docs/diagrams/<board>.md` (it renders on GitHub or in VS Code's Markdown preview).
+To watch the diagram, ask "open it in gabiro" (the agent calls `gabiro_open_board`), or run the canvas yourself:
+
+```bash
+node /absolute/path/to/gabiro/dist/cli.js serve --open   # http://127.0.0.1:4477, next free port if taken
+```
+
+The canvas updates live as the agent changes a board, and highlights what just changed. The same diagrams are in `docs/diagrams/<board>.md`, which renders on GitHub and in VS Code's Markdown preview.
 
 ## Tools
 
@@ -42,6 +48,7 @@ Then open `docs/diagrams/<board>.md` (it renders on GitHub or in VS Code's Markd
 | `gabiro_update_board` | Rename a board or change its direction |
 | `gabiro_auto_layout` | Re-run layout (pinned nodes stay unless `force`) |
 | `gabiro_export` | Mermaid or Markdown, optionally written to disk |
+| `gabiro_open_board` | Show a board in the live canvas, starting it if needed |
 | `gabiro_delete_board` | Delete a board and its export |
 
 ## Config
@@ -55,6 +62,10 @@ Then open `docs/diagrams/<board>.md` (it renders on GitHub or in VS Code's Markd
 ## Develop
 
 ```bash
-npm test          # unit + MCP tests (the stdio e2e test runs after `npm run build`)
-npm run typecheck
+npm run build     # server (tsc) + canvas (vite) into dist/
+npm test          # unit, MCP and server tests; e2e/browser tests run after a build
+npm run typecheck # server and web
+npm run dev:web   # canvas with hot reload; proxies the API to a running `gabiro serve`
 ```
+
+Browser tests use Chromium from `$GABIRO_CHROMIUM`, `/opt/pw-browsers/chromium`, or `npx playwright install chromium`; they are skipped when none is found. Set `GABIRO_NO_BROWSER=1` to stop gabiro from opening browser windows.
