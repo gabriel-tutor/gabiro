@@ -3,12 +3,24 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { describe, expect, it } from "vitest";
 import { createMcpServer } from "../../src/mcp/server.js";
+import type { CanvasAccess } from "../../src/mcp/tools.js";
 import { tempRoot } from "../helpers.js";
 
-async function connect() {
+/** A canvas that is "not running" unless told otherwise, and records what it was asked to open. */
+function fakeCanvas(running?: string) {
+  const opened: string[] = [];
+  const canvas: CanvasAccess = {
+    url: async (_root, boardId) => (running ? (boardId ? `${running}/b/${boardId}` : running) : undefined),
+    ensure: async () => running ?? "http://127.0.0.1:4477",
+    open: (url) => (opened.push(url), true),
+  };
+  return { canvas, opened };
+}
+
+async function connect(canvas: CanvasAccess = fakeCanvas().canvas) {
   const root = await tempRoot();
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
-  await createMcpServer(root).connect(serverSide);
+  await createMcpServer(root, canvas).connect(serverSide);
   const client = new Client({ name: "test", version: "0.0.0" });
   await client.connect(clientSide);
   const call = async (name: string, args: Record<string, unknown> = {}) =>
@@ -38,6 +50,7 @@ describe("gabiro MCP server", () => {
       "gabiro_export",
       "gabiro_get_board",
       "gabiro_list_boards",
+      "gabiro_open_board",
       "gabiro_update_board",
     ]);
     expect(tools.find((t) => t.name === "gabiro_get_board")!.annotations?.readOnlyHint).toBe(true);
@@ -112,5 +125,35 @@ describe("gabiro MCP server", () => {
     const deleted = await call("gabiro_delete_board", { boardId: "checkout" });
     expect(deleted.structuredContent).toEqual({ boardId: "checkout", deleted: true });
     expect(text(await call("gabiro_list_boards"))).toMatch(/No boards yet/);
+  });
+
+  it("opens the canvas for a board, starting it through the canvas access", async () => {
+    const { canvas, opened } = fakeCanvas();
+    const { call, text } = await connect(canvas);
+    await call("gabiro_create_board", { title: "Checkout", kind: "architecture", ops: CHECKOUT_OPS });
+    const r = await call("gabiro_open_board", { boardId: "checkout" });
+    expect(r.structuredContent).toEqual({ url: "http://127.0.0.1:4477/b/checkout", opened: true });
+    expect(text(r)).toBe("Opened http://127.0.0.1:4477/b/checkout in the browser.");
+    expect(opened).toEqual(["http://127.0.0.1:4477/b/checkout"]);
+
+    const missing = await call("gabiro_open_board", { boardId: "nope" });
+    expect(missing.isError).toBe(true);
+    expect(text(missing)).toMatch(/No board "nope"/);
+  });
+
+  it("links the live canvas in create/apply results only when it is running", async () => {
+    const off = await connect();
+    const quiet = await off.call("gabiro_create_board", { title: "Checkout", kind: "architecture", ops: CHECKOUT_OPS });
+    expect(quiet.structuredContent).not.toHaveProperty("canvasUrl");
+
+    const on = await connect(fakeCanvas("http://127.0.0.1:4480").canvas);
+    const created = await on.call("gabiro_create_board", { title: "Checkout", kind: "architecture", ops: CHECKOUT_OPS });
+    expect(created.structuredContent).toMatchObject({ canvasUrl: "http://127.0.0.1:4480/b/checkout" });
+    expect(on.text(created)).toContain("Canvas: http://127.0.0.1:4480/b/checkout");
+    const changed = await on.call("gabiro_apply_changes", {
+      boardId: "checkout",
+      ops: [{ op: "add_node", id: "cache", type: "cache", label: "Redis" }],
+    });
+    expect(changed.structuredContent).toMatchObject({ canvasUrl: "http://127.0.0.1:4480/b/checkout" });
   });
 });
