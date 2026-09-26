@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { canvasUrl, ensureCanvasServer, openInBrowser, startCanvasServer, type CanvasServer } from "../../src/server/index.js";
+import { canvasUrl, ensureCanvasServer, isLocalCanvasUrl, openInBrowser, startCanvasServer, type CanvasServer } from "../../src/server/index.js";
 import { GabiroError } from "../../src/core/index.js";
 import { tempRoot } from "../helpers.js";
 
@@ -52,6 +52,22 @@ describe("ensureCanvasServer", () => {
   });
 });
 
+describe("isLocalCanvasUrl", () => {
+  it("accepts local canvas URLs", () => {
+    expect(isLocalCanvasUrl("http://127.0.0.1:4477")).toBe(true);
+    expect(isLocalCanvasUrl("http://127.0.0.1:4477/b/checkout-api")).toBe(true);
+    expect(isLocalCanvasUrl("http://localhost:5000/")).toBe(true);
+  });
+
+  it("rejects non-local and malformed URLs", () => {
+    expect(isLocalCanvasUrl("http://127.0.0.1:4477/b/x&calc")).toBe(false);
+    expect(isLocalCanvasUrl("https://evil.example/")).toBe(false);
+    expect(isLocalCanvasUrl("file:///etc/passwd")).toBe(false);
+    expect(isLocalCanvasUrl("http://127.0.0.1:1/b/a b")).toBe(false);
+    expect(isLocalCanvasUrl("javascript:alert(1)")).toBe(false);
+  });
+});
+
 describe("openInBrowser", () => {
   it("does nothing when GABIRO_NO_BROWSER is set", () => {
     const before = process.env.GABIRO_NO_BROWSER;
@@ -61,6 +77,16 @@ describe("openInBrowser", () => {
     } finally {
       if (before === undefined) delete process.env.GABIRO_NO_BROWSER;
       else process.env.GABIRO_NO_BROWSER = before;
+    }
+  });
+
+  it("rejects non-local URLs even when GABIRO_NO_BROWSER is unset", () => {
+    const before = process.env.GABIRO_NO_BROWSER;
+    if (before !== undefined) delete process.env.GABIRO_NO_BROWSER;
+    try {
+      expect(openInBrowser("http://127.0.0.1:1/b/x&calc")).toBe(false);
+    } finally {
+      if (before !== undefined) process.env.GABIRO_NO_BROWSER = before;
     }
   });
 });

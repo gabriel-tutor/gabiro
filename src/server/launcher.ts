@@ -9,6 +9,11 @@ const defaultCliPath = () => fileURLToPath(new URL("../cli.js", import.meta.url)
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** Returns true only for URLs matching exactly the local canvas URL pattern (127.0.0.1, localhost, or [::1]). */
+export function isLocalCanvasUrl(url: string): boolean {
+  return /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d{1,5})?(\/[A-Za-z0-9._~\/-]*)?$/.test(url);
+}
+
 /** URL of this project's running canvas (optionally for one board), or undefined if none is recorded as running. */
 export async function canvasUrl(root: string, boardId?: string): Promise<string | undefined> {
   const info = await readServerInfo(root);
@@ -49,14 +54,15 @@ export async function ensureCanvasServer(root: string, options: EnsureOptions = 
   );
 }
 
-/** Opens `url` in the default browser. Returns false when disabled via GABIRO_NO_BROWSER or when no opener exists. */
+/** Opens a local canvas URL in the default browser. Returns false when disabled via GABIRO_NO_BROWSER or when the URL isn't a local http(s) canvas URL; true once an opener was launched (a missing opener fails silently). */
 export function openInBrowser(url: string): boolean {
   if (process.env.GABIRO_NO_BROWSER) return false;
+  if (!isLocalCanvasUrl(url)) return false;
   const [cmd, args] =
     process.platform === "darwin"
       ? ["open", [url]]
       : process.platform === "win32"
-        ? ["cmd", ["/c", "start", "", url]]
+        ? ["rundll32", ["url.dll,FileProtocolHandler", url]]
         : ["xdg-open", [url]];
   try {
     const child = spawn(cmd, args, { detached: true, stdio: "ignore" });
