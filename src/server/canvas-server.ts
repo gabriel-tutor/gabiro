@@ -15,6 +15,12 @@ export const DEFAULT_PORT = 4477;
 const PORT_ATTEMPTS = 20;
 /** Board subscriptions allowed per WebSocket; further subscribe messages are ignored. */
 export const MAX_SUBSCRIPTIONS = 50;
+/** Largest WebSocket frame accepted; clients only send tiny subscribe messages. */
+export const MAX_WS_PAYLOAD = 64 * 1024;
+/** Largest edit request body (POST /api/boards/:id/ops). */
+export const MAX_OPS_BODY = 256 * 1024;
+/** Most ops accepted in one edit request. */
+export const MAX_OPS_PER_REQUEST = 500;
 
 export interface CanvasServerOptions {
   root: string;
@@ -42,6 +48,53 @@ export const defaultWebDir = () => fileURLToPath(new URL("../web", import.meta.u
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
   res.end(JSON.stringify(body));
+}
+
+/** Reads a request body up to `limit` bytes; resolves undefined when it is larger. */
+function readBody(req: IncomingMessage, limit: number): Promise<string | undefined> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    let tooLarge = false;
+    req.on("data", (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > limit) tooLarge = true;
+      else chunks.push(chunk);
+    });
+    req.on("end", () => resolve(tooLarge ? undefined : Buffer.concat(chunks).toString("utf8")));
+    req.on("error", reject);
+  });
+}
+
+/** Validates the body of an edit request: `{ ops: object[], expectedRevision?: integer }`. */
+function parseEditRequest(raw: string): { ops: unknown[]; expectedRevision?: number } | string {
+  let body: unknown;
+  try {
+    body = JSON.parse(raw);
+  } catch {
+    return "The request body isn't valid JSON.";
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body)) return 'Send a JSON object like {"ops": [...], "expectedRevision": 3}.';
+  const { ops, expectedRevision } = body as Record<string, unknown>;
+  if (!Array.isArray(ops) || ops.length === 0) return '"ops" must be a non-empty array of ops.';
+  if (ops.length > MAX_OPS_PER_REQUEST) return `Send at most ${MAX_OPS_PER_REQUEST} ops per request.`;
+  if (expectedRevision !== undefined && !Number.isInteger(expectedRevision)) return '"expectedRevision" must be an integer.';
+  return { ops, expectedRevision: expectedRevision as number | undefined };
+}
+
+/** Validates the body of a layout request: `{ force?: boolean }` (an empty body means `{}`). */
+function parseLayoutRequest(raw: string): { force: boolean } | string {
+  if (raw.trim() === "") return { force: false };
+  let body: unknown;
+  try {
+    body = JSON.parse(raw);
+  } catch {
+    return "The request body isn't valid JSON.";
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body)) return 'Send a JSON object like {"force": false}.';
+  const { force } = body as Record<string, unknown>;
+  if (force !== undefined && typeof force !== "boolean") return '"force" must be true or false.';
+  return { force: force === true };
 }
 
 function errorStatus(code: string): number {
@@ -91,8 +144,13 @@ export async function startCanvasServer(options: CanvasServerOptions): Promise<C
 
   async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const { pathname } = new URL(req.url ?? "/", "http://localhost");
+    const edit = /^\/api\/boards\/([^/]+)\/(ops|layout)$/.exec(pathname);
+    if (edit && req.method === "POST") {
+      await handleEdit(req, res, decodeURIComponent(edit[1]!), edit[2] as "ops" | "layout");
+      return;
+    }
     if (req.method !== "GET" && req.method !== "HEAD") {
-      sendJson(res, 405, { code: "VALIDATION", error: "The canvas API is read-only in this version." });
+      sendJson(res, 405, { code: "VALIDATION", error: "Use GET, or POST to /api/boards/<id>/ops to edit a board." });
       return;
     }
     if (pathname === "/api/health") {
@@ -121,8 +179,47 @@ export async function startCanvasServer(options: CanvasServerOptions): Promise<C
     await serveStatic(webDir, pathname, res);
   }
 
+  /**
+   * POST /api/boards/:id/ops (apply ops) and /api/boards/:id/layout (re-run auto-layout) — the
+   * canvas's edits. Cross-site requests are refused twice over: a foreign Origin gets 403, and only
+   * application/json bodies are accepted (which browsers can't send cross-site without a CORS
+   * preflight this server never approves).
+   */
+  async function handleEdit(req: IncomingMessage, res: ServerResponse, boardId: string, action: "ops" | "layout"): Promise<void> {
+    if (!originAllowed(req)) {
+      sendJson(res, 403, { code: "FORBIDDEN", error: "Edits are only accepted from the canvas page itself." });
+      return;
+    }
+    if (!(req.headers["content-type"] ?? "").toLowerCase().startsWith("application/json")) {
+      sendJson(res, 415, { code: "VALIDATION", error: "Send the edit as application/json." });
+      return;
+    }
+    const raw = await readBody(req, MAX_OPS_BODY);
+    if (raw === undefined) {
+      sendJson(res, 413, { code: "VALIDATION", error: `The edit is larger than ${MAX_OPS_BODY / 1024} KB.` });
+      return;
+    }
+    const parsed = action === "ops" ? parseEditRequest(raw) : parseLayoutRequest(raw);
+    if (typeof parsed === "string") {
+      sendJson(res, 400, { code: "VALIDATION", error: parsed });
+      return;
+    }
+    try {
+      const { board, exportWarning } =
+        "ops" in parsed
+          ? await service.applyChanges(boardId, parsed.ops, parsed.expectedRevision)
+          : await service.autoLayout(boardId, parsed.force);
+      sendJson(res, 200, { board, ...(exportWarning ? { exportWarning } : {}) });
+    } catch (err) {
+      if (!(err instanceof GabiroError)) throw err;
+      // On a conflict, send the latest board so the canvas can re-apply its edit without another round trip.
+      const latest = err.code === "CONFLICT" ? await service.get(boardId).catch(() => undefined) : undefined;
+      sendJson(res, errorStatus(err.code), { code: err.code, error: err.message, ...(latest ? { board: latest } : {}) });
+    }
+  }
+
   // --- live updates -------------------------------------------------------
-  const wss = new WebSocketServer({ noServer: true });
+  const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_WS_PAYLOAD });
   const boardSubs = new Map<WebSocket, Set<string>>();
   const listSubs = new Set<WebSocket>();
 
@@ -169,6 +266,11 @@ export async function startCanvasServer(options: CanvasServerOptions): Promise<C
   wss.on("connection", (ws) => {
     boardSubs.set(ws, new Set());
     disarmIdle();
+    // Without an 'error' listener, a malformed or oversized frame would crash the process.
+    ws.on("error", (err) => {
+      console.error("gabiro canvas: closing a WebSocket after an error:", err.message);
+      ws.terminate();
+    });
     ws.on("close", () => {
       boardSubs.delete(ws);
       listSubs.delete(ws);

@@ -17,6 +17,9 @@ The project root defaults to the current directory.
 Add to Claude Code:
   claude mcp add gabiro -- npx -y gabiro mcp`;
 
+/** setTimeout overflows above 2^31-1 ms (about 35,791 minutes). */
+const MAX_IDLE_MINUTES = 35_000;
+
 function option(args: string[], name: string): string | undefined {
   const i = args.indexOf(name);
   return i >= 0 ? args[i + 1] : undefined;
@@ -44,8 +47,8 @@ async function main(argv: string[]): Promise<void> {
       }
       const idleArg = option(args, "--idle-exit");
       const idleMinutes = idleArg === undefined ? undefined : Number(idleArg);
-      if (args.includes("--idle-exit") && !(idleMinutes !== undefined && Number.isFinite(idleMinutes) && idleMinutes > 0)) {
-        console.error(`--idle-exit needs a number of minutes greater than 0 (got "${idleArg}")`);
+      if (args.includes("--idle-exit") && !(idleMinutes !== undefined && idleMinutes > 0 && idleMinutes <= MAX_IDLE_MINUTES)) {
+        console.error(`--idle-exit needs a number of minutes between 0 and ${MAX_IDLE_MINUTES} (got "${idleArg}")`);
         process.exitCode = 1;
         return;
       }
