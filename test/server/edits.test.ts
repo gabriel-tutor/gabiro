@@ -127,6 +127,18 @@ describe("POST /api/boards/:id/ops", () => {
     expect(foreign.status).toBe(403);
   });
 
+  it("answers a board id with malformed URL encoding with 400, not 500", async () => {
+    const { server } = await setup();
+    const body = JSON.stringify({ ops: [{ op: "update_node", id: "api", label: "X" }] });
+    for (const action of ["ops", "layout"]) {
+      const res = await post(server.port, `/api/boards/%E0/${action}`, action === "ops" ? body : "{}", json(server.port));
+      expect(res).toEqual({ status: 400, json: { code: "VALIDATION", error: "That board id isn't valid URL encoding." } });
+    }
+    const get = await fetch(`${server.url}/api/boards/%E0`);
+    expect(get.status).toBe(400);
+    expect(await get.json()).toEqual({ code: "VALIDATION", error: "That board id isn't valid URL encoding." });
+  });
+
   it("still refuses other write methods", async () => {
     const { server } = await setup();
     const res = await fetch(`${server.url}/api/boards/shop`, { method: "PUT", body: "{}" });

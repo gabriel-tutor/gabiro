@@ -45,6 +45,16 @@ export interface CanvasServer {
 /** dist/server/canvas-server.js -> dist/web */
 export const defaultWebDir = () => fileURLToPath(new URL("../web", import.meta.url));
 
+/** Decodes a board id from a URL path segment; on malformed percent-encoding, answers 400 and returns undefined. */
+function decodeBoardId(segment: string, res: ServerResponse): string | undefined {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    sendJson(res, 400, { code: "VALIDATION", error: "That board id isn't valid URL encoding." });
+    return undefined;
+  }
+}
+
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
   res.end(JSON.stringify(body));
@@ -146,7 +156,8 @@ export async function startCanvasServer(options: CanvasServerOptions): Promise<C
     const { pathname } = new URL(req.url ?? "/", "http://localhost");
     const edit = /^\/api\/boards\/([^/]+)\/(ops|layout)$/.exec(pathname);
     if (edit && req.method === "POST") {
-      await handleEdit(req, res, decodeURIComponent(edit[1]!), edit[2] as "ops" | "layout");
+      const boardId = decodeBoardId(edit[1]!, res);
+      if (boardId !== undefined) await handleEdit(req, res, boardId, edit[2] as "ops" | "layout");
       return;
     }
     if (req.method !== "GET" && req.method !== "HEAD") {
@@ -164,8 +175,10 @@ export async function startCanvasServer(options: CanvasServerOptions): Promise<C
     }
     const match = /^\/api\/boards\/([^/]+)$/.exec(pathname);
     if (match) {
+      const boardId = decodeBoardId(match[1]!, res);
+      if (boardId === undefined) return;
       try {
-        sendJson(res, 200, { board: await service.get(decodeURIComponent(match[1]!)) });
+        sendJson(res, 200, { board: await service.get(boardId) });
       } catch (err) {
         if (!(err instanceof GabiroError)) throw err;
         sendJson(res, errorStatus(err.code), { code: err.code, error: err.message });
