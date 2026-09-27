@@ -2,8 +2,34 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { GabiroError, KINDS, SlugSchema, summarizeBoard, type Board } from "../core/index.js";
+import { canvasUrl, openCanvas, type OpenCanvasResult } from "../server/launcher.js";
 import type { BoardService } from "../service/index.js";
 import { OPS_HELP } from "./help.js";
+
+/** How the tools reach the canvas. Injected so tests don't spawn servers or browsers. */
+export interface CanvasAccess {
+  /** URL of the running canvas (for a board), or undefined if none is running. */
+  url(root: string, boardId?: string): Promise<string | undefined>;
+  /** Shows the canvas (for a board) in the Gabiro app or the browser, starting a server if needed. */
+  show(root: string, boardId?: string): Promise<OpenCanvasResult>;
+}
+
+export const defaultCanvas: CanvasAccess = {
+  url: canvasUrl,
+  show: (root, boardId) => openCanvas(root, boardId),
+};
+
+/** What gabiro_open_board tells the agent about where the canvas opened. */
+function openedText({ url, via, appPending }: OpenCanvasResult): string {
+  if (via === "app") {
+    if (appPending) {
+      return "Asked the Gabiro app to show the canvas. It may be waiting for you to confirm opening this folder; call gabiro_open_board again once it's open to get the URL.";
+    }
+    return `Opened ${url} in the Gabiro app.`;
+  }
+  if (via === "browser") return `Opened ${url} in the browser.`;
+  return `The canvas is running at ${url} — open it in a browser.`;
+}
 
 type Payload = { text: string; data: Record<string, unknown> };
 
@@ -43,10 +69,16 @@ function withExportWarning(payload: Payload, exportWarning?: string): Payload {
   };
 }
 
+/** Adds the live canvas link for a board when the canvas server is running. */
+async function withCanvasUrl(payload: Payload, url: string | undefined): Promise<Payload> {
+  if (!url) return payload;
+  return { text: `${payload.text}\nCanvas: ${url}`, data: { ...payload.data, canvasUrl: url } };
+}
+
 const opsParam = z.array(z.object({ op: z.string() }).passthrough()).describe(OPS_HELP);
 const boardIdParam = SlugSchema.describe('Board id, e.g. "checkout-architecture" (see gabiro_list_boards)');
 
-export function registerTools(server: McpServer, service: BoardService): void {
+export function registerTools(server: McpServer, service: BoardService, canvas: CanvasAccess = defaultCanvas): void {
   server.registerTool(
     "gabiro_list_boards",
     {
@@ -87,7 +119,7 @@ export function registerTools(server: McpServer, service: BoardService): void {
     ({ title, kind, id, direction, ops }) =>
       run(async () => {
         const result = await service.create({ title, kind, id, direction, ops });
-        const report = changeReport(result.board);
+        const report = await withCanvasUrl(changeReport(result.board), await canvas.url(service.root, result.board.id));
         return withExportWarning({ text: `${report.text}\n\n${summarizeBoard(result.board)}`, data: report.data }, result.exportWarning);
       }),
   );
@@ -138,7 +170,8 @@ export function registerTools(server: McpServer, service: BoardService): void {
       run(async () => {
         const before = await service.get(boardId);
         const result = await service.applyChanges(boardId, ops, expectedRevision);
-        return withExportWarning(changeReport(result.board, before), result.exportWarning);
+        const report = await withCanvasUrl(changeReport(result.board, before), await canvas.url(service.root, boardId));
+        return withExportWarning(report, result.exportWarning);
       }),
   );
 
@@ -196,6 +229,31 @@ export function registerTools(server: McpServer, service: BoardService): void {
       run(async () => {
         const { content, path } = await service.export(boardId, format, write);
         return { text: path ? `Wrote ${path}\n\n${content}` : content, data: { boardId, format, ...(path ? { path } : {}) } };
+      }),
+  );
+
+  server.registerTool(
+    "gabiro_open_board",
+    {
+      title: "Open canvas",
+      description:
+        "Show a board (or the board list) in the live canvas: in the Gabiro Mac app when it is installed, otherwise in the browser. The canvas updates live as boards change. Starts a local server on 127.0.0.1 if none is running.",
+      inputSchema: { boardId: boardIdParam.optional().describe("Board to show; omit for the list of boards") },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    ({ boardId }) =>
+      run(async () => {
+        if (boardId) await service.get(boardId);
+        const result = await canvas.show(service.root, boardId);
+        return {
+          text: openedText(result),
+          data: {
+            ...(result.url ? { url: result.url } : {}),
+            opened: result.via !== "none",
+            via: result.via,
+            ...(result.appPending ? { appPending: true } : {}),
+          },
+        };
       }),
   );
 

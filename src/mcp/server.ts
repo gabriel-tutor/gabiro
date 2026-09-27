@@ -3,11 +3,11 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { BoardService } from "../service/index.js";
 import { VERSION } from "../version.js";
 import { SERVER_INSTRUCTIONS } from "./help.js";
-import { registerTools } from "./tools.js";
+import { defaultCanvas, registerTools, type CanvasAccess } from "./tools.js";
 
-export function createMcpServer(root: string): McpServer {
+export function createMcpServer(root: string, canvas: CanvasAccess = defaultCanvas): McpServer {
   const server = new McpServer({ name: "gabiro", version: VERSION }, { instructions: SERVER_INSTRUCTIONS });
-  registerTools(server, new BoardService(root));
+  registerTools(server, new BoardService(root), canvas);
   return server;
 }
 

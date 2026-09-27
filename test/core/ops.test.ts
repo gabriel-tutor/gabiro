@@ -104,4 +104,20 @@ describe("applyOps", () => {
     expect(b.groups).toEqual([]);
     expect(b.nodes[0]!.groupId).toBeUndefined();
   });
+
+  it("does not let ops set layout-computed edge routes", () => {
+    const b = applyOps(empty(), [
+      { op: "add_node", id: "a", type: "service", label: "A" },
+      { op: "add_node", id: "b", type: "service", label: "B" },
+    ]);
+    expect(() => applyOps(b, [{ op: "add_edge", from: "a", to: "b", type: "sync", points: [{ x: 0, y: 0 }] }])).toThrow(
+      /Op #0 is malformed.*points/,
+    );
+  });
+
+  it("clears a pin with pinned: null", () => {
+    const pinned = applyOps(empty(), [{ op: "add_node", id: "a", type: "service", label: "A", position: { x: 1, y: 2 }, pinned: true }]);
+    const b = applyOps(pinned, [{ op: "update_node", id: "a", pinned: null }]);
+    expect(b.nodes[0]).toEqual({ id: "a", type: "service", label: "A", position: { x: 1, y: 2 } });
+  });
 });

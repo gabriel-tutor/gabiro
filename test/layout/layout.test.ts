@@ -94,4 +94,31 @@ describe("layoutBoard", () => {
     expect(p("core").y).toBeLessThan(p("mcp").y);
     expect(p("spec").x).toBeGreaterThan(p("core").x);
   });
+
+  it("records ELK edge routes from the source box to the target box, including inside nested groups", async () => {
+    for (const fixture of [FIXTURES.flowchart, FIXTURES.architecture]) {
+      const laid = await layoutBoard(fixture);
+      const near = (p: { x: number; y: number }, id: string) => {
+        const n = laid.nodes.find((x) => x.id === id)!;
+        const { width, height } = nodeSize(n);
+        return p.x >= n.position!.x - 1 && p.x <= n.position!.x + width + 1 && p.y >= n.position!.y - 1 && p.y <= n.position!.y + height + 1;
+      };
+      for (const e of laid.edges) {
+        expect(e.points!.length, e.id).toBeGreaterThanOrEqual(2);
+        expect(near(e.points![0]!, e.from), `${e.id} starts at ${e.from}`).toBe(true);
+        expect(near(e.points!.at(-1)!, e.to), `${e.id} ends at ${e.to}`).toBe(true);
+      }
+    }
+  });
+
+  it("drops routes that touch pinned nodes, and never routes non-ELK kinds", async () => {
+    const pinned = applyOps(await layoutBoard(FIXTURES.architecture), [
+      { op: "update_node", id: "stripe", position: { x: 2000, y: 2000 }, pinned: true },
+    ]);
+    const relaid = await layoutBoard(pinned, "all");
+    expect(relaid.edges.find((e) => e.id === "api->stripe")!.points).toBeUndefined();
+    expect(relaid.edges.find((e) => e.id === "web->api")!.points).toBeDefined();
+    const seq = await layoutBoard(FIXTURES.sequence);
+    expect(seq.edges.every((e) => e.points === undefined)).toBe(true);
+  });
 });

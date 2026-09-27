@@ -1,0 +1,141 @@
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import { canvasUrl, ensureCanvasServer, isHealthy, isLocalCanvasUrl, openInBrowser, startCanvasServer, type CanvasServer } from "../../src/server/index.js";
+import { GabiroError } from "../../src/core/index.js";
+import { tempRoot } from "../helpers.js";
+
+const servers: CanvasServer[] = [];
+afterEach(async () => {
+  await Promise.all(servers.splice(0).map((s) => s.close()));
+});
+
+async function writeInfo(root: string, info: object) {
+  await mkdir(join(root, ".gabiro"), { recursive: true });
+  await writeFile(join(root, ".gabiro/server.json"), JSON.stringify(info));
+}
+
+describe("canvasUrl", () => {
+  it("is undefined when no server is recorded", async () => {
+    expect(await canvasUrl(await tempRoot())).toBeUndefined();
+  });
+
+  it("builds board URLs for a live recorded server", async () => {
+    const root = await tempRoot();
+    await writeInfo(root, { pid: process.pid, port: 4477, url: "http://127.0.0.1:4477", root });
+    expect(await canvasUrl(root)).toBe("http://127.0.0.1:4477");
+    expect(await canvasUrl(root, "shop")).toBe("http://127.0.0.1:4477/b/shop");
+  });
+
+  it("ignores a record left by a dead process or another project", async () => {
+    const root = await tempRoot();
+    await writeInfo(root, { pid: 2 ** 22 + 12345, port: 1, url: "http://127.0.0.1:1", root });
+    expect(await canvasUrl(root)).toBeUndefined();
+    await writeInfo(root, { pid: process.pid, port: 1, url: "http://127.0.0.1:1", root: "/elsewhere" });
+    expect(await canvasUrl(root)).toBeUndefined();
+  });
+});
+
+describe("ensureCanvasServer", () => {
+  it("reuses a healthy server for the same project without spawning", async () => {
+    const root = await tempRoot();
+    const s = await startCanvasServer({ root, port: 0, webDir: root });
+    servers.push(s);
+    expect(await ensureCanvasServer(root, { cliPath: "/definitely/missing/cli.js" })).toBe(s.url);
+  });
+
+  it("fails fast when the spawned server exits before becoming healthy", async () => {
+    const root = await tempRoot();
+    const cliPath = join(root, "crash.mjs");
+    await writeFile(cliPath, "process.exit(1);\n");
+    const started = Date.now();
+    const err = await ensureCanvasServer(root, { cliPath }).catch((e) => e);
+    expect(Date.now() - started).toBeLessThan(3000);
+    expect(err).toBeInstanceOf(GabiroError);
+    expect(err.code).toBe("UNAVAILABLE");
+    expect(err.message).toMatch(/gabiro serve --root/);
+  });
+
+  it("serializes concurrent starts with a lock so only one server is spawned", async () => {
+    const root = await tempRoot();
+    // A fake CLI that records each spawn, then serves health for this root like `gabiro serve`.
+    const cliPath = join(root, "fake-cli.mjs");
+    await writeFile(
+      cliPath,
+      [
+        `import { appendFileSync, writeFileSync } from "node:fs";`,
+        `import { createServer } from "node:http";`,
+        `import { join } from "node:path";`,
+        `const root = process.argv[process.argv.indexOf("--root") + 1];`,
+        `appendFileSync(join(root, "spawns.log"), process.argv.slice(2).join(" ") + "\\n");`,
+        `const s = createServer((req, res) => res.end(JSON.stringify({ ok: true, root, version: "x", pid: process.pid })));`,
+        `s.listen(0, "127.0.0.1", () => {`,
+        `  const url = "http://127.0.0.1:" + s.address().port;`,
+        `  writeFileSync(join(root, ".gabiro/server.json"), JSON.stringify({ pid: process.pid, port: s.address().port, url, root }));`,
+        `});`,
+        `setTimeout(() => process.exit(0), 5000); // never outlive the test`,
+      ].join("\n"),
+    );
+    await mkdir(join(root, ".gabiro"), { recursive: true });
+    const [a, b] = await Promise.all([ensureCanvasServer(root, { cliPath }), ensureCanvasServer(root, { cliPath })]);
+    expect(a).toBe(b);
+    const spawns = (await readFile(join(root, "spawns.log"), "utf8")).trim().split("\n");
+    expect(spawns).toHaveLength(1);
+    expect(spawns[0]).toContain("--idle-exit 30");
+    const info = JSON.parse(await readFile(join(root, ".gabiro/server.json"), "utf8"));
+    process.kill(info.pid, "SIGTERM");
+  });
+
+  it("explains how to fix a missing build instead of spawning", async () => {
+    const err = await ensureCanvasServer(await tempRoot(), { cliPath: "/definitely/missing/cli.js" }).catch((e) => e);
+    expect(err).toBeInstanceOf(GabiroError);
+    expect(err.code).toBe("UNAVAILABLE");
+    expect(err.message).toMatch(/npm run build/);
+  });
+});
+
+describe("isLocalCanvasUrl", () => {
+  it("accepts local canvas URLs", () => {
+    expect(isLocalCanvasUrl("http://127.0.0.1:4477")).toBe(true);
+    expect(isLocalCanvasUrl("http://127.0.0.1:4477/b/checkout-api")).toBe(true);
+    expect(isLocalCanvasUrl("http://localhost:5000/")).toBe(true);
+  });
+
+  it("rejects non-local and malformed URLs", () => {
+    expect(isLocalCanvasUrl("http://127.0.0.1:4477/b/x&calc")).toBe(false);
+    expect(isLocalCanvasUrl("https://evil.example/")).toBe(false);
+    expect(isLocalCanvasUrl("file:///etc/passwd")).toBe(false);
+    expect(isLocalCanvasUrl("http://127.0.0.1:1/b/a b")).toBe(false);
+    expect(isLocalCanvasUrl("javascript:alert(1)")).toBe(false);
+  });
+});
+
+describe("isHealthy", () => {
+  it("rejects non-local URLs without fetching", async () => {
+    const root = await tempRoot();
+    expect(await isHealthy("http://example.com:4477", root)).toBe(false);
+  });
+});
+
+describe("openInBrowser", () => {
+  it("does nothing when GABIRO_NO_BROWSER is set", () => {
+    const before = process.env.GABIRO_NO_BROWSER;
+    process.env.GABIRO_NO_BROWSER = "1";
+    try {
+      expect(openInBrowser("http://127.0.0.1:1")).toBe(false);
+    } finally {
+      if (before === undefined) delete process.env.GABIRO_NO_BROWSER;
+      else process.env.GABIRO_NO_BROWSER = before;
+    }
+  });
+
+  it("rejects non-local URLs even when GABIRO_NO_BROWSER is unset", () => {
+    const before = process.env.GABIRO_NO_BROWSER;
+    if (before !== undefined) delete process.env.GABIRO_NO_BROWSER;
+    try {
+      expect(openInBrowser("http://127.0.0.1:1/b/x&calc")).toBe(false);
+    } finally {
+      if (before !== undefined) process.env.GABIRO_NO_BROWSER = before;
+    }
+  });
+});

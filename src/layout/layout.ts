@@ -23,6 +23,7 @@ export async function layoutBoard(board: Board, mode: LayoutMode = "auto"): Prom
 
   const movable = (n: BoardNode) => !n.pinned;
   let placed: Map<string, Position>;
+  let routes = new Map<string, Position[]>();
   switch (next.kind) {
     case "freeform":
       placed = freeformPositions(next);
@@ -34,11 +35,18 @@ export async function layoutBoard(board: Board, mode: LayoutMode = "auto"): Prom
       placed = kanbanPositions(next);
       break;
     default:
-      placed = await elkPositions(next);
+      ({ positions: placed, routes } = await elkPositions(next));
   }
   for (const n of next.nodes) {
     const p = placed.get(n.id);
     if (p && (movable(n) || !n.position)) n.position = p;
+  }
+  // ELK routed every edge as if nothing were pinned, so a route touching a pinned node is wrong: drop it.
+  const pinned = new Set(next.nodes.filter((n) => n.pinned).map((n) => n.id));
+  for (const e of next.edges) {
+    const route = routes.get(e.id);
+    if (route && !pinned.has(e.from) && !pinned.has(e.to)) e.points = route;
+    else delete e.points;
   }
   return next;
 }
@@ -93,7 +101,7 @@ function kanbanPositions(board: Board): Map<string, Position> {
   return out;
 }
 
-async function elkPositions(board: Board): Promise<Map<string, Position>> {
+async function elkPositions(board: Board): Promise<{ positions: Map<string, Position>; routes: Map<string, Position[]> }> {
   const direction = board.layout.direction === "LR" ? "RIGHT" : "DOWN";
   const sorted = [...board.nodes].sort((a, b) => (a.id < b.id ? -1 : 1));
 
@@ -124,14 +132,26 @@ async function elkPositions(board: Board): Promise<Map<string, Position>> {
   };
 
   const result = await elk.layout(graph);
-  const out = new Map<string, Position>();
+  const positions = new Map<string, Position>();
+  const offsets = new Map<string, Position>([["root", { x: 0, y: 0 }]]);
   const walk = (node: ElkNode, offset: Position) => {
     for (const child of node.children ?? []) {
       const abs = { x: offset.x + (child.x ?? 0), y: offset.y + (child.y ?? 0) };
-      if (!child.id.startsWith("group:")) out.set(child.id, round(abs));
+      if (child.id.startsWith("group:")) offsets.set(child.id, abs);
+      else positions.set(child.id, round(abs));
       walk(child, abs);
     }
   };
   walk(result, { x: 0, y: 0 });
-  return out;
+
+  // Edge sections are relative to the edge's container (the group ELK placed it in), not the root.
+  const routes = new Map<string, Position[]>();
+  for (const edge of (result.edges ?? []) as (ElkExtendedEdge & { container?: string })[]) {
+    const section = edge.sections?.[0];
+    if (!section) continue;
+    const base = offsets.get(edge.container ?? "root") ?? { x: 0, y: 0 };
+    const points = [section.startPoint, ...(section.bendPoints ?? []), section.endPoint];
+    routes.set(edge.id, points.map((p) => round({ x: base.x + p.x, y: base.y + p.y })));
+  }
+  return { positions, routes };
 }

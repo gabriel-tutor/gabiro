@@ -24,4 +24,5 @@ Kind-specific: ERD entities take "fields" and relations take "cardinality"; sequ
 
 export const SERVER_INSTRUCTIONS = `Gabiro draws software diagrams (architecture, flowchart, sequence, erd, mindmap, freeform, kanban) as boards stored in the project under .gabiro/boards, with Mermaid exports in docs/diagrams.
 Workflow: call gabiro_list_boards to reuse existing boards; build a new diagram in ONE gabiro_create_board call with all ops; refine with gabiro_apply_changes, passing the revision you last saw as expectedRevision.
-Use gabiro_get_board (format "summary") to re-read a board, because the user may have edited it. Record open questions and risks as "sticky" nodes.`;
+Use gabiro_get_board (format "summary") to re-read a board, because the user may have edited it. Record open questions and risks as "sticky" nodes.
+When the user wants to see a diagram, call gabiro_open_board to show it in the live canvas.`;
