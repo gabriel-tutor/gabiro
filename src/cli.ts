@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { runStdioServer } from "./mcp/server.js";
 import { DEFAULT_PORT, openInBrowser, startCanvasServer } from "./server/index.js";
@@ -32,7 +33,15 @@ async function main(argv: string[]): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  const root = resolve(option(args, "--root") ?? process.cwd());
+  const requested = resolve(option(args, "--root") ?? process.cwd());
+  let root: string;
+  try {
+    root = realpathSync(requested);
+  } catch {
+    console.error(`gabiro: the project root ${requested} doesn't exist`);
+    process.exitCode = 1;
+    return;
+  }
   switch (command) {
     case "mcp":
       await runStdioServer(root);
