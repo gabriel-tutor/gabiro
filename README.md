@@ -20,6 +20,22 @@ claude mcp add gabiro -- node /absolute/path/to/gabiro/dist/cli.js mcp
 
 The server uses the directory it is started in as the project root. Pass `--root <dir>` to override.
 
+## Mac app
+
+Gabiro.app runs the canvas without a terminal: launch it from the Dock, pick a project folder, and each project opens in its own window. When an agent calls `gabiro_open_board`, the app comes forward with that board (without the app, the board opens in your browser).
+
+**Install:** download `Gabiro-<version>-universal.dmg` from the [Releases](../../releases) page and drag Gabiro into Applications. The app is ad-hoc signed but not notarized, so the first launch is blocked: open it once, then go to **System Settings → Privacy & Security** and click **Open Anyway** (or run `xattr -dr com.apple.quarantine /Applications/Gabiro.app`).
+
+**Connect an agent:** choose **Gabiro → Set Up Agent…** and copy the command. The app bundles the MCP server, so you don't need Node or this repo:
+
+```bash
+claude mcp add gabiro -- /Applications/Gabiro.app/Contents/Resources/bin/gabiro mcp
+```
+
+**Projects:** the start window lists recent projects (also in the Dock menu and **File → Open Recent**); **Open Folder…** opens any folder. **Switch project** in a canvas header brings the start window back. If a canvas server is already running for a project (`gabiro serve`), the app uses it; otherwise it starts one, and stops it when you close the window. Links like `gabiro://open?root=/path/to/project&board=checkout` open a board; the app asks before opening a folder that isn't in your recent projects.
+
+Set `GABIRO_NO_APP=1` to make `gabiro_open_board` use the browser even when the app is installed.
+
 ## Use
 
 Ask your agent things like:
@@ -64,7 +80,7 @@ If the agent changes the board while you're editing, your edit is re-applied on 
 | `gabiro_update_board` | Rename a board or change its direction |
 | `gabiro_auto_layout` | Re-run layout (pinned nodes stay unless `force`) |
 | `gabiro_export` | Mermaid or Markdown, optionally written to disk |
-| `gabiro_open_board` | Show a board in the live canvas, starting it if needed |
+| `gabiro_open_board` | Show a board in the live canvas (the Mac app if installed, else the browser), starting it if needed |
 | `gabiro_delete_board` | Delete a board and its export |
 
 ## Config
@@ -83,5 +99,16 @@ npm test          # unit, MCP and server tests; e2e/browser tests run after a bu
 npm run typecheck # server and web
 npm run dev:web   # canvas with hot reload; proxies the API to a running `gabiro serve`
 ```
+
+### Mac app
+
+```bash
+npm run desktop:start  # build everything and run the app from the repo (any OS)
+npm run app:mac        # macOS only: package release/Gabiro-<version>-universal.dmg and .zip
+```
+
+The Electron main process is in `desktop/src/` and reuses the built server from `dist/`. `test/desktop/app.smoke.test.ts` drives the app with Playwright; it needs `npm run build && npm run desktop:build` and a display (on Linux, run the tests under `xvfb-run -a`). CI builds the `.dmg` on every push to `main` and pull request; pushing a `v<version>` tag that matches `package.json` publishes it to a GitHub Release.
+
+Before a release, check on a Mac: the app opens from the `.dmg` after **Open Anyway**; the Dock menu lists recent projects; `open "gabiro://open?root=$PWD"` in a project folder asks, then opens it; `gabiro_open_board` from Claude Code (set up with **Set Up Agent…**) brings the board up in the app; quitting the app stops its canvas servers (`.gabiro/server.json` is removed).
 
 Browser tests use Chromium from `$GABIRO_CHROMIUM`, `/opt/pw-browsers/chromium`, or `npx playwright install chromium`; they are skipped when none is found. Set `GABIRO_NO_BROWSER=1` to stop gabiro from opening browser windows.
