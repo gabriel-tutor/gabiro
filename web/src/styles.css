@@ -98,6 +98,12 @@ a {
 .gb-status {
   margin-left: auto;
 }
+.gb-switch {
+  font-size: 12px;
+}
+.gb-meta + .gb-switch {
+  margin-left: auto;
+}
 .gb-status.on {
   color: #2e9e5b;
 }

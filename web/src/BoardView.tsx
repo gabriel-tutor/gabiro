@@ -21,6 +21,7 @@ import { addNodeOps, connectOps, deleteOps, moveOps } from "./edits.js";
 import { useLiveBoard } from "./hooks.js";
 import { edgeTypes, nodeTypes } from "./nodes.js";
 import { SidePanel, type Selection } from "./SidePanel.js";
+import { SwitchProject } from "./SwitchProject.js";
 import { toFlow } from "./toFlow.js";
 import { Toolbar } from "./Toolbar.js";
 import { useEditor, type Editor } from "./useEditor.js";
@@ -58,6 +59,7 @@ export function BoardView({ boardId }: { boardId: string }) {
         <span className={`gb-status ${live.connected ? "on" : "off"}`} title={live.connected ? "Live" : "Reconnecting…"}>
           {live.connected ? "● live" : "○ reconnecting"}
         </span>
+        <SwitchProject />
       </header>
       {live.error && (
         <div className="gb-banner" role="alert">

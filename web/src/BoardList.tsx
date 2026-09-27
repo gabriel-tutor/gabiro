@@ -1,4 +1,5 @@
 import { useLiveBoards } from "./hooks.js";
+import { SwitchProject } from "./SwitchProject.js";
 
 export function BoardList() {
   const boards = useLiveBoards();
@@ -7,6 +8,7 @@ export function BoardList() {
       <header className="gb-header">
         <h1>gabiro</h1>
         <span className="gb-meta">boards in this project</span>
+        <SwitchProject />
       </header>
       <main className="gb-list">
         {boards === undefined && <p className="gb-empty">Loading…</p>}
