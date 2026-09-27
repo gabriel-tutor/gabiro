@@ -182,6 +182,30 @@ describe.skipIf(!existsSync(join(webDir, "index.html")) || !chromiumPath)("canva
       expect(after.nodes.find((n) => n.id === "api")!.position).toEqual(pinned);
       expect(errors).toEqual([]);
     }, 15_000);
+
+    it("moves edges to the new handle side when the board direction changes", async () => {
+      // api is pinned, so its edges are drawn from the handles (smoothstep), not from layout routes.
+      await svc.updateBoard("shop", { direction: "TB" });
+      await expect.poll(() => shownRevision(page)).toBeGreaterThanOrEqual((await svc.get("shop")).revision);
+      const handle = node(page, "web").locator(".react-flow__handle.source");
+      await expect.poll(() => handle.getAttribute("class")).toContain("react-flow__handle-bottom");
+      const path = page.locator('[data-testid="rf__edge-web->api"] path.react-flow__edge-path').first();
+      await expect
+        .poll(
+          async () => {
+            const box = (await handle.boundingBox())!;
+            const start = await path.evaluate((el) => {
+              const p = (el as SVGPathElement).getPointAtLength(0);
+              const m = (el as SVGPathElement).getScreenCTM()!;
+              return { x: m.a * p.x + m.c * p.y + m.e, y: m.b * p.x + m.d * p.y + m.f };
+            });
+            // In handle sizes: the edge starts at the handle's outer rim, half a handle from its centre.
+            return Math.hypot(start.x - (box.x + box.width / 2), start.y - (box.y + box.height / 2)) / box.height;
+          },
+          { timeout: 3000 },
+        )
+        .toBeLessThan(1);
+    }, 15_000);
   });
 
   describe("kanban and sequence boards", () => {

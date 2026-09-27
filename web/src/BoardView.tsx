@@ -87,17 +87,22 @@ export function BoardView({ boardId }: { boardId: string }) {
   );
 }
 
+const directionOf = (n: Node) => (n.data as { direction?: string }).direction;
+
 /**
  * `next` nodes, keeping what the user has selected in `prev` and React Flow's measured size. A node
  * without `measured` makes React Flow drop its handle positions and re-measure it; until then its
- * edges aren't drawn and its handles don't connect.
+ * edges aren't drawn and its handles don't connect. So `measured` is kept, but only while the
+ * handles can't have moved: a new node type or board direction puts them elsewhere at the same
+ * size, which nothing else would re-measure.
  */
 function carryOver(prev: Node[], next: Node[]): Node[] {
   const old = new Map(prev.map((n) => [n.id, n]));
   return next.map((n) => {
     const p = old.get(n.id);
     if (!p) return n;
-    return { ...n, ...(p.selected ? { selected: true } : {}), ...(p.measured ? { measured: p.measured } : {}) };
+    const sameHandles = p.type === n.type && directionOf(p) === directionOf(n);
+    return { ...n, ...(p.selected ? { selected: true } : {}), ...(p.measured && sameHandles ? { measured: p.measured } : {}) };
   });
 }
 
