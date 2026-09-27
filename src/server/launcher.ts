@@ -90,6 +90,18 @@ export async function ensureCanvasServer(root: string, options: EnsureOptions = 
   );
 }
 
+/** Starts a detached opener process; false if it couldn't be spawned (a missing binary fails silently). */
+function spawnDetached(cmd: string, args: string[]): boolean {
+  try {
+    const child = spawn(cmd, args, { detached: true, stdio: "ignore" });
+    child.on("error", () => {});
+    child.unref();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Opens a local canvas URL in the default browser. Returns false when disabled via GABIRO_NO_BROWSER or when the URL isn't a local http(s) canvas URL; true once an opener was launched (a missing opener fails silently). */
 export function openInBrowser(url: string): boolean {
   if (process.env.GABIRO_NO_BROWSER) return false;
@@ -100,14 +112,7 @@ export function openInBrowser(url: string): boolean {
       : process.platform === "win32"
         ? ["rundll32", ["url.dll,FileProtocolHandler", url]]
         : ["xdg-open", [url]];
-  try {
-    const child = spawn(cmd, args, { detached: true, stdio: "ignore" });
-    child.on("error", () => {});
-    child.unref();
-    return true;
-  } catch {
-    return false;
-  }
+  return spawnDetached(cmd, args);
 }
 
 /** Where `gabiro_open_board` showed the canvas. */
@@ -145,14 +150,7 @@ export function appLink(root: string, boardId?: string): string {
 }
 
 function openWithMacOS(link: string): boolean {
-  try {
-    const child = spawn("open", [link], { detached: true, stdio: "ignore" });
-    child.on("error", () => {});
-    child.unref();
-    return true;
-  } catch {
-    return false;
-  }
+  return spawnDetached("open", [link]);
 }
 
 /** Polls server.json until it names a server healthy for this root; undefined after `timeoutMs`. */
