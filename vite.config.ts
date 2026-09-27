@@ -6,7 +6,9 @@ import { defineConfig } from "vite";
 export default defineConfig({
   root: "web",
   plugins: [react()],
-  build: { outDir: "../dist/web", emptyOutDir: true },
+  // The bundle includes the core validation (zod) so canvas edits fail fast with the same messages
+  // agents get; ~160 KB gzipped is fine for a local app, so the default 500 KB warning is raised.
+  build: { outDir: "../dist/web", emptyOutDir: true, chunkSizeWarningLimit: 800 },
   server: {
     proxy: {
       // The canvas server only accepts its own Host and Origin, so rewrite both.
