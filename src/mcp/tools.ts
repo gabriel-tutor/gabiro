@@ -2,7 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { GabiroError, KINDS, SlugSchema, summarizeBoard, type Board } from "../core/index.js";
-import { canvasUrl, ensureCanvasServer, openInBrowser } from "../server/launcher.js";
+import { canvasUrl, openCanvas, type OpenCanvasResult } from "../server/launcher.js";
 import type { BoardService } from "../service/index.js";
 import { OPS_HELP } from "./help.js";
 
@@ -10,17 +10,22 @@ import { OPS_HELP } from "./help.js";
 export interface CanvasAccess {
   /** URL of the running canvas (for a board), or undefined if none is running. */
   url(root: string, boardId?: string): Promise<string | undefined>;
-  /** Base URL of the canvas, starting it if needed. */
-  ensure(root: string): Promise<string>;
-  /** Tries to open a URL in the user's browser. */
-  open(url: string): boolean;
+  /** Shows the canvas (for a board) in the Gabiro app or the browser, starting a server if needed. */
+  show(root: string, boardId?: string): Promise<OpenCanvasResult>;
 }
 
 export const defaultCanvas: CanvasAccess = {
   url: canvasUrl,
-  ensure: (root) => ensureCanvasServer(root),
-  open: openInBrowser,
+  show: (root, boardId) => openCanvas(root, boardId),
 };
+
+/** What gabiro_open_board tells the agent about where the canvas opened. */
+function openedText({ url, via, appTimedOut }: OpenCanvasResult): string {
+  const fallback = appTimedOut ? " (The Gabiro app didn't show it within 8 seconds.)" : "";
+  if (via === "app") return `Opened ${url} in the Gabiro app.`;
+  if (via === "browser") return `Opened ${url} in the browser.${fallback}`;
+  return `The canvas is running at ${url} — open it in a browser.${fallback}`;
+}
 
 type Payload = { text: string; data: Record<string, unknown> };
 
@@ -228,18 +233,18 @@ export function registerTools(server: McpServer, service: BoardService, canvas: 
     {
       title: "Open canvas",
       description:
-        "Show a board (or the board list) in the live browser canvas, starting the local canvas server if needed. The canvas updates live as boards change. Starts a local server on 127.0.0.1 if none is running.",
+        "Show a board (or the board list) in the live canvas: in the Gabiro Mac app when it is installed, otherwise in the browser. The canvas updates live as boards change. Starts a local server on 127.0.0.1 if none is running.",
       inputSchema: { boardId: boardIdParam.optional().describe("Board to show; omit for the list of boards") },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     ({ boardId }) =>
       run(async () => {
         if (boardId) await service.get(boardId);
-        const base = await canvas.ensure(service.root);
-        const url = boardId ? `${base}/b/${boardId}` : base;
-        const opened = canvas.open(url);
-        const text = opened ? `Opened ${url} in the browser.` : `The canvas is running at ${url} — open it in a browser.`;
-        return { text, data: { url, opened } };
+        const result = await canvas.show(service.root, boardId);
+        return {
+          text: openedText(result),
+          data: { url: result.url, opened: result.via !== "none", via: result.via, ...(result.appTimedOut ? { appTimedOut: true } : {}) },
+        };
       }),
   );
 

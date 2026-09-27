@@ -4,15 +4,20 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { describe, expect, it } from "vitest";
 import { createMcpServer } from "../../src/mcp/server.js";
 import type { CanvasAccess } from "../../src/mcp/tools.js";
+import type { OpenCanvasResult } from "../../src/server/index.js";
 import { tempRoot } from "../helpers.js";
 
-/** A canvas that is "not running" unless told otherwise, and records what it was asked to open. */
-function fakeCanvas(running?: string) {
+/** A canvas that is "not running" unless told otherwise, and records what it was asked to show. */
+function fakeCanvas(running?: string, via: OpenCanvasResult["via"] = "browser") {
   const opened: string[] = [];
+  const withBoard = (base: string, boardId?: string) => (boardId ? `${base}/b/${boardId}` : base);
   const canvas: CanvasAccess = {
-    url: async (_root, boardId) => (running ? (boardId ? `${running}/b/${boardId}` : running) : undefined),
-    ensure: async () => running ?? "http://127.0.0.1:4477",
-    open: (url) => (opened.push(url), true),
+    url: async (_root, boardId) => (running ? withBoard(running, boardId) : undefined),
+    show: async (_root, boardId) => {
+      const url = withBoard(running ?? "http://127.0.0.1:4477", boardId);
+      opened.push(url);
+      return { url, via };
+    },
   };
   return { canvas, opened };
 }
@@ -135,13 +140,32 @@ describe("gabiro MCP server", () => {
     const { call, text } = await connect(canvas);
     await call("gabiro_create_board", { title: "Checkout", kind: "architecture", ops: CHECKOUT_OPS });
     const r = await call("gabiro_open_board", { boardId: "checkout" });
-    expect(r.structuredContent).toEqual({ url: "http://127.0.0.1:4477/b/checkout", opened: true });
+    expect(r.structuredContent).toEqual({ url: "http://127.0.0.1:4477/b/checkout", opened: true, via: "browser" });
     expect(text(r)).toBe("Opened http://127.0.0.1:4477/b/checkout in the browser.");
     expect(opened).toEqual(["http://127.0.0.1:4477/b/checkout"]);
 
     const missing = await call("gabiro_open_board", { boardId: "nope" });
     expect(missing.isError).toBe(true);
     expect(text(missing)).toMatch(/No board "nope"/);
+  });
+
+  it("says where the canvas opened: the app, a browser fallback, or nowhere", async () => {
+    const inApp = await connect(fakeCanvas(undefined, "app").canvas);
+    const r = await inApp.call("gabiro_open_board");
+    expect(r.structuredContent).toEqual({ url: "http://127.0.0.1:4477", opened: true, via: "app" });
+    expect(inApp.text(r)).toBe("Opened http://127.0.0.1:4477 in the Gabiro app.");
+
+    const { canvas } = fakeCanvas();
+    canvas.show = async () => ({ url: "http://127.0.0.1:4477", via: "browser", appTimedOut: true });
+    const fellBack = await connect(canvas);
+    const f = await fellBack.call("gabiro_open_board");
+    expect(f.structuredContent).toEqual({ url: "http://127.0.0.1:4477", opened: true, via: "browser", appTimedOut: true });
+    expect(fellBack.text(f)).toBe("Opened http://127.0.0.1:4477 in the browser. (The Gabiro app didn't show it within 8 seconds.)");
+
+    const quiet = await connect(fakeCanvas(undefined, "none").canvas);
+    const q = await quiet.call("gabiro_open_board");
+    expect(q.structuredContent).toEqual({ url: "http://127.0.0.1:4477", opened: false, via: "none" });
+    expect(quiet.text(q)).toBe("The canvas is running at http://127.0.0.1:4477 — open it in a browser.");
   });
 
   it("links the live canvas in create/apply results only when it is running", async () => {
