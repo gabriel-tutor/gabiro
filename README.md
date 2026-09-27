@@ -49,7 +49,7 @@ You and the agent edit the same board, and both see each other's changes live.
 - **Connect**: drag from a node's handle (shown on hover) onto another node.
 - **Delete**: select, then press Delete or Backspace.
 - **Undo / redo**: ⌘Z / ⇧⌘Z (Ctrl+Z / Ctrl+Shift+Z elsewhere). This undoes only your own edits.
-- **Auto-layout**: tidy everything except the nodes you pinned.
+- **Auto-layout**: tidy everything except the nodes you pinned. Auto-layout is not undoable.
 
 If the agent changes the board while you're editing, your edit is re-applied on top of its change. If that isn't possible (for example, the agent deleted the node you were editing), you get a message explaining why.
 

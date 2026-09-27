@@ -6,6 +6,24 @@ export interface HistoryEntry {
   after: Board;
 }
 
+/**
+ * The history entry for a saved edit. After a conflict re-apply the edit landed on the server's
+ * newer board (`base`), not on the board the user saw, so undo must return to `base`: returning to
+ * the older board would also undo the other editor's changes.
+ */
+export function entryFor(shown: Board, saved: { board: Board; base?: Board }): HistoryEntry {
+  return { before: saved.base ?? shown, after: saved.board };
+}
+
+/**
+ * What to do with an undo/redo entry whose request failed: a network hiccup or a lost race may
+ * work next time ("restore"); anything else (the board changed so the step no longer applies)
+ * never will ("discard").
+ */
+export function afterFailedStep(code: string): "restore" | "discard" {
+  return code === "NETWORK" || code === "CONFLICT" ? "restore" : "discard";
+}
+
 /** Undo/redo stacks for the user's own canvas edits (agent edits are not undone). */
 export class EditHistory {
   private done: HistoryEntry[] = [];
@@ -36,13 +54,15 @@ export class EditHistory {
 
   /** Puts an entry back where it came from after its undo/redo request failed. */
   restore(entry: HistoryEntry, from: "undo" | "redo"): void {
-    if (from === "undo") {
-      this.undone.pop();
-      this.done.push(entry);
-    } else {
-      this.done.pop();
-      this.undone.push(entry);
-    }
+    this.discard(entry, from);
+    (from === "undo" ? this.done : this.undone).push(entry);
+  }
+
+  /** Drops an entry that undo/redo just moved, for good (its step can no longer be applied). */
+  discard(entry: HistoryEntry, from: "undo" | "redo"): void {
+    const stack = from === "undo" ? this.undone : this.done;
+    const i = stack.lastIndexOf(entry);
+    if (i >= 0) stack.splice(i, 1);
   }
 
   get canUndo(): boolean {
