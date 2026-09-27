@@ -114,4 +114,10 @@ describe("applyOps", () => {
       /Op #0 is malformed.*points/,
     );
   });
+
+  it("clears a pin with pinned: null", () => {
+    const pinned = applyOps(empty(), [{ op: "add_node", id: "a", type: "service", label: "A", position: { x: 1, y: 2 }, pinned: true }]);
+    const b = applyOps(pinned, [{ op: "update_node", id: "a", pinned: null }]);
+    expect(b.nodes[0]).toEqual({ id: "a", type: "service", label: "A", position: { x: 1, y: 2 } });
+  });
 });

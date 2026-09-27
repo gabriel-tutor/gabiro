@@ -15,7 +15,7 @@ const NodePatch = z.object({
   tags: nullable(z.array(z.string())),
   color: nullable(z.string()),
   position: nullable(NodeSchema.shape.position.unwrap()),
-  pinned: z.boolean().optional(),
+  pinned: nullable(z.boolean()),
   order: nullable(z.number().int()),
   fields: nullable(NodeSchema.shape.fields.unwrap()),
 });
