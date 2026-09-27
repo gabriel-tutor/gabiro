@@ -48,7 +48,7 @@ async function main(argv: string[]): Promise<void> {
       const idleArg = option(args, "--idle-exit");
       const idleMinutes = idleArg === undefined ? undefined : Number(idleArg);
       if (args.includes("--idle-exit") && !(idleMinutes !== undefined && idleMinutes > 0 && idleMinutes <= MAX_IDLE_MINUTES)) {
-        console.error(`--idle-exit needs a number of minutes between 0 and ${MAX_IDLE_MINUTES} (got "${idleArg}")`);
+        console.error(`--idle-exit needs a number of minutes greater than 0 and at most ${MAX_IDLE_MINUTES} (got "${idleArg}")`);
         process.exitCode = 1;
         return;
       }
