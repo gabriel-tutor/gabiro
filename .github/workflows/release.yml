@@ -8,11 +8,29 @@ permissions:
   contents: write
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Install Chromium for the browser tests
+        run: npx playwright-core install --with-deps chromium
+      - run: npm run build
+      - run: npm run desktop:build
+      - run: npm run typecheck
+      - name: Test (the Electron smoke test needs a display)
+        run: xvfb-run -a npm test
+
   mac-app:
+    needs: test
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm

@@ -2,6 +2,11 @@
 # The gabiro CLI inside Gabiro.app (Contents/Resources/bin/gabiro), run on the app's own Node.
 # Usage is the same as the npm package, e.g.: claude mcp add gabiro -- "<this path>" mcp
 set -e
-here=$(cd "$(dirname "$0")" && pwd -P)
+script=$0
+while [ -L "$script" ]; do
+  link=$(readlink "$script")
+  case $link in /*) script=$link ;; *) script=$(dirname "$script")/$link ;; esac
+done
+here=$(cd "$(dirname "$script")" && pwd -P)
 contents=$(dirname "$(dirname "$here")")
 ELECTRON_RUN_AS_NODE=1 exec "$contents/MacOS/Gabiro" "$contents/Resources/app.asar/dist/cli.js" "$@"

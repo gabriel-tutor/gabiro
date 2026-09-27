@@ -11,6 +11,7 @@ files:
   - desktop/start.css
   - desktop/start.js
   - desktop/preload.cjs
+# bin/gabiro runs the app binary as Node (ELECTRON_RUN_AS_NODE): keep Electron's RunAsNode fuse enabled (the default).
 extraResources:
   - from: desktop/bin/gabiro
     to: bin/gabiro
