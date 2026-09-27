@@ -60,6 +60,10 @@ function guardNavigation(contents: WebContents, origin?: string): void {
     event.preventDefault();
     openOutside(url);
   });
+  contents.on("will-redirect", (event, url) => {
+    if (origin !== undefined && new URL(url).origin === origin) return;
+    event.preventDefault();
+  });
   contents.setWindowOpenHandler(({ url }) => {
     openOutside(url);
     return { action: "deny" };
@@ -216,6 +220,8 @@ async function rebuildMenus(): Promise<void> {
   }
 }
 
+const confirming = new Set<string>();
+
 /** Follows a gabiro:// link. Invalid links are only logged: any website can fire them. */
 async function followLink(raw: string): Promise<void> {
   const parsed = parseDeepLink(raw);
@@ -236,15 +242,24 @@ async function followLink(raw: string): Promise<void> {
     return;
   }
   if (!projects.roots.includes(root) && !(await recent.has(root))) {
-    const { response } = await dialog.showMessageBox({
-      type: "question",
-      message: `Open the project at ${root} in Gabiro?`,
-      detail: "A link asked Gabiro to open this folder.",
-      buttons: ["Open", "Cancel"],
-      defaultId: 0,
-      cancelId: 1,
-    });
-    if (response !== 0) return;
+    if (confirming.has(root)) {
+      console.error(`gabiro: ignored link ${raw}: already asking about this folder`);
+      return;
+    }
+    confirming.add(root);
+    try {
+      const { response } = await dialog.showMessageBox({
+        type: "question",
+        message: `Open the project at ${root} in Gabiro?`,
+        detail: "A link asked Gabiro to open this folder.",
+        buttons: ["Open", "Cancel"],
+        defaultId: 0,
+        cancelId: 1,
+      });
+      if (response !== 0) return;
+    } finally {
+      confirming.delete(root);
+    }
   }
   await openProject(root, link.boardId);
 }
