@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { GabiroError } from "../core/index.js";
@@ -107,4 +108,87 @@ export function openInBrowser(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+/** Where `gabiro_open_board` showed the canvas. */
+export interface OpenCanvasResult {
+  url: string;
+  via: "app" | "browser" | "none";
+  /** True when the Gabiro app was asked first but didn't show the project in time. */
+  appTimedOut?: boolean;
+}
+
+export interface OpenCanvasOptions {
+  platform?: NodeJS.Platform;
+  env?: NodeJS.ProcessEnv;
+  /** Whether Gabiro.app is installed. */
+  appInstalled?: () => boolean;
+  /** Hands a gabiro:// link to the OS; false if that failed. */
+  openLink?: (link: string) => boolean;
+  ensure?: (root: string) => Promise<string>;
+  openBrowser?: (url: string) => boolean;
+  /** How long to wait for the app to serve the project. Default 8000. */
+  appTimeoutMs?: number;
+}
+
+/** True when Gabiro.app is in /Applications or ~/Applications, or this process runs from inside it. */
+export function isGabiroAppInstalled(): boolean {
+  if (/\/Gabiro\.app\/Contents\/MacOS\//.test(process.execPath)) return true;
+  return [join("/Applications", "Gabiro.app"), join(homedir(), "Applications", "Gabiro.app")].some((p) => existsSync(p));
+}
+
+/** The link that asks Gabiro.app to show a project (and optionally one board). */
+export function appLink(root: string, boardId?: string): string {
+  const params = new URLSearchParams({ root });
+  if (boardId) params.set("board", boardId);
+  return `gabiro://open?${params}`;
+}
+
+function openWithMacOS(link: string): boolean {
+  try {
+    const child = spawn("open", [link], { detached: true, stdio: "ignore" });
+    child.on("error", () => {});
+    child.unref();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Polls server.json until it names a server healthy for this root; undefined after `timeoutMs`. */
+async function waitForServer(root: string, timeoutMs: number): Promise<string | undefined> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const info = await readServerInfo(root);
+    if (info && (await isHealthy(info.url, root))) return info.url;
+    if (Date.now() >= deadline) return undefined;
+    await sleep(200);
+  }
+}
+
+/**
+ * Shows this project's canvas (optionally one board). On macOS with Gabiro.app installed it asks
+ * the app, which opens or focuses the project's window, and waits for the project's server. Otherwise,
+ * or if the app doesn't come up in time, it ensures a canvas server and opens the browser.
+ * GABIRO_NO_APP skips the app; GABIRO_NO_BROWSER skips both.
+ */
+export async function openCanvas(root: string, boardId?: string, options: OpenCanvasOptions = {}): Promise<OpenCanvasResult> {
+  const env = options.env ?? process.env;
+  const withBoard = (base: string) => (boardId ? `${base}/b/${boardId}` : base);
+  let appTimedOut = false;
+
+  const useApp =
+    (options.platform ?? process.platform) === "darwin" &&
+    !env.GABIRO_NO_APP &&
+    !env.GABIRO_NO_BROWSER &&
+    (options.appInstalled ?? isGabiroAppInstalled)();
+  if (useApp && (options.openLink ?? openWithMacOS)(appLink(root, boardId))) {
+    const base = await waitForServer(root, options.appTimeoutMs ?? 8000);
+    if (base) return { url: withBoard(base), via: "app" };
+    appTimedOut = true;
+  }
+
+  const url = withBoard(await (options.ensure ?? ((r) => ensureCanvasServer(r)))(root));
+  const opened = !env.GABIRO_NO_BROWSER && (options.openBrowser ?? openInBrowser)(url);
+  return { url, via: opened ? "browser" : "none", ...(appTimedOut ? { appTimedOut } : {}) };
 }
