@@ -1,13 +1,14 @@
 import { BaseEdge, Handle, Position, type EdgeProps, type NodeProps, type Node, type Edge } from "@xyflow/react";
 import type { GroupData, MessageData, RoutedData, ShapeData } from "./toFlow.js";
 
-/** Invisible connection points; edges are drawn by the server's data, not by the user (read-only canvas). */
-function Handles({ direction }: { direction: "LR" | "TB" }) {
+/** Connection points: invisible on a read-only canvas, shown on hover when the user can draw edges. */
+function Handles({ direction, connectable }: { direction: "LR" | "TB"; connectable: boolean }) {
   const [target, source] = direction === "LR" ? [Position.Left, Position.Right] : [Position.Top, Position.Bottom];
+  const className = connectable ? "gb-handle gb-connectable" : "gb-handle";
   return (
     <>
-      <Handle type="target" position={target} isConnectable={false} className="gb-handle" />
-      <Handle type="source" position={source} isConnectable={false} className="gb-handle" />
+      <Handle type="target" position={target} isConnectable={connectable} className={className} />
+      <Handle type="source" position={source} isConnectable={connectable} className={className} />
     </>
   );
 }
@@ -15,10 +16,10 @@ function Handles({ direction }: { direction: "LR" | "TB" }) {
 const flash = (changed: boolean) => (changed ? " gb-flash" : "");
 
 export function ShapeNode({ data }: NodeProps<Node<ShapeData>>) {
-  const { node, direction, changed } = data;
+  const { node, direction, changed, connectable } = data;
   return (
     <div className={`gb-node gb-${node.type}${flash(changed)}`} title={node.description}>
-      <Handles direction={direction} />
+      <Handles direction={direction} connectable={connectable} />
       <div className="gb-label">{node.label}</div>
       {node.tech && <div className="gb-tech">{node.tech}</div>}
       {node.type === "sticky" && node.description && <div className="gb-desc">{node.description}</div>}
@@ -27,10 +28,10 @@ export function ShapeNode({ data }: NodeProps<Node<ShapeData>>) {
 }
 
 export function EntityNode({ data }: NodeProps<Node<ShapeData>>) {
-  const { node, direction, changed } = data;
+  const { node, direction, changed, connectable } = data;
   return (
     <div className={`gb-entity${flash(changed)}`}>
-      <Handles direction={direction} />
+      <Handles direction={direction} connectable={connectable} />
       <div className="gb-entity-title">{node.label}</div>
       {(node.fields ?? []).map((f) => (
         <div key={f.name} className="gb-field">
@@ -47,11 +48,18 @@ export function EntityNode({ data }: NodeProps<Node<ShapeData>>) {
 }
 
 export function ParticipantNode({ data }: NodeProps<Node<ShapeData>>) {
-  const { node, changed } = data;
+  const { node, changed, connectable } = data;
   return (
     <div className="gb-participant">
+      {/* The first handles anchor message arrows at the lifeline's centre; the extra pair lets the user draw new messages. */}
       <Handle type="target" position={Position.Top} isConnectable={false} className="gb-handle" />
       <Handle type="source" position={Position.Top} isConnectable={false} className="gb-handle" />
+      {connectable && (
+        <>
+          <Handle id="draw-in" type="target" position={Position.Left} className="gb-handle gb-connectable" />
+          <Handle id="draw-out" type="source" position={Position.Right} className="gb-handle gb-connectable" />
+        </>
+      )}
       <div className={`gb-participant-head${flash(changed)}`}>{node.label}</div>
       <div className="gb-lifeline" />
     </div>

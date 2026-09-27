@@ -81,6 +81,21 @@ describe("toFlow", () => {
     expect(later.height).toBeGreaterThan(0);
   });
 
+  it("is read-only by default and editable on request (groups never draggable or deletable)", async () => {
+    const board = await laid(FIXTURES.architecture);
+    const readOnly = toFlow(board);
+    const api = (f: ReturnType<typeof toFlow>) => f.nodes.find((n) => n.id === "api")!;
+    expect(api(readOnly)).toMatchObject({ draggable: false, selectable: false, deletable: false });
+    expect((api(readOnly).data as { connectable: boolean }).connectable).toBe(false);
+    const editable = toFlow(board, new Set(), { editable: true });
+    expect(api(editable)).toMatchObject({ draggable: true, selectable: true, deletable: true });
+    expect((api(editable).data as { connectable: boolean }).connectable).toBe(true);
+    expect(editable.nodes.find((n) => n.id === "group:backend")).toMatchObject({ draggable: false, deletable: false });
+    expect(editable.edges.every((e) => e.selectable && e.deletable)).toBe(true);
+    const kanban = toFlow(await laid(FIXTURES.kanban), new Set(), { editable: true });
+    expect((kanban.nodes.find((n) => n.id === "core")!.data as { connectable: boolean }).connectable).toBe(false);
+  });
+
   it("flags changed nodes and edges", async () => {
     const board = await laid(FIXTURES.architecture);
     const { nodes, edges } = toFlow(board, new Set(["api", "web->api"]));

@@ -1,5 +1,5 @@
 import type { Edge, Node } from "@xyflow/react";
-import type { Board, BoardEdge, BoardGroup, BoardNode, Position } from "../../src/core/index.js";
+import { KIND_RULES, type Board, type BoardEdge, type BoardGroup, type BoardNode, type Position } from "../../src/core/index.js";
 import { nodeSize } from "../../src/layout/sizes.js";
 
 /** Vertical distance between sequence messages, and the space above the first one. */
@@ -14,6 +14,8 @@ export interface ShapeData extends Record<string, unknown> {
   kind: Board["kind"];
   direction: Board["layout"]["direction"];
   changed: boolean;
+  /** Whether the user can draw edges from this node's handles. */
+  connectable: boolean;
 }
 export interface GroupData extends Record<string, unknown> {
   group: BoardGroup;
@@ -118,7 +120,14 @@ function edgeLabel(e: BoardEdge): string | undefined {
  * (already laid out by the server), sizes from the shared nodeSize table.
  * `changed` marks ids to highlight because they changed in the latest update.
  */
-export function toFlow(board: Board, changed: ReadonlySet<string> = new Set()): Flow {
+export interface FlowOptions {
+  /** Editable canvas: nodes can be dragged, selected, connected and deleted. Default false (read-only). */
+  editable?: boolean;
+}
+
+export function toFlow(board: Board, changed: ReadonlySet<string> = new Set(), options: FlowOptions = {}): Flow {
+  const editable = options.editable ?? false;
+  const connectable = editable && KIND_RULES[board.kind].edgeTypes.length > 0;
   const messages = board.kind === "sequence" ? board.edges.filter((e) => e.type === "message").sort(byOrder) : [];
   const lifeline = HEADER + (messages.length + 1) * MESSAGE_GAP;
 
@@ -137,6 +146,7 @@ export function toFlow(board: Board, changed: ReadonlySet<string> = new Set()): 
       zIndex: depth(board, g),
       draggable: false,
       selectable: false,
+      deletable: false,
     });
   }
 
@@ -149,9 +159,11 @@ export function toFlow(board: Board, changed: ReadonlySet<string> = new Set()): 
       position: n.position ?? { x: 0, y: 0 },
       width: size.width,
       height: n.type === "participant" ? lifeline : size.height,
-      data: { node: n, kind: board.kind, direction: board.layout.direction, changed: changed.has(n.id) } satisfies ShapeData,
+      data: { node: n, kind: board.kind, direction: board.layout.direction, changed: changed.has(n.id), connectable } satisfies ShapeData,
       zIndex: 100,
-      draggable: false,
+      draggable: editable,
+      selectable: editable,
+      deletable: editable,
     };
   });
 
@@ -165,6 +177,8 @@ export function toFlow(board: Board, changed: ReadonlySet<string> = new Set()): 
           type: "message",
           data: { y: HEADER + (i + 1) * MESSAGE_GAP, label: e.label ?? "", dashed: isDashed(e), changed: changed.has(e.id) } satisfies MessageData,
           zIndex: 200,
+          selectable: editable,
+          deletable: editable,
         }))
       : board.edges.map((e) => {
           const route = usableRoute(e, nodeRects);
@@ -180,6 +194,8 @@ export function toFlow(board: Board, changed: ReadonlySet<string> = new Set()): 
           style: isDashed(e) ? { strokeDasharray: "6 4" } : undefined,
           markerEnd: board.kind === "mindmap" || board.kind === "erd" ? undefined : { type: "arrowclosed" as const },
           zIndex: 200,
+          selectable: editable,
+          deletable: editable,
           };
         });
 
