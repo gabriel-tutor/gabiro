@@ -25,6 +25,8 @@ if (process.env.GABIRO_USER_DATA) app.setPath("userData", process.env.GABIRO_USE
 
 const appRoot = app.getAppPath();
 const desktopDir = join(appRoot, "desktop");
+/** The app icon as a PNG: the window icon on Windows and Linux, and the Dock icon when run from the repo. */
+const iconPath = join(desktopDir, "build", "icon.png");
 const recent = new RecentProjects(join(app.getPath("userData"), "recent.json"));
 let startWindow: BrowserWindow | undefined;
 
@@ -75,6 +77,7 @@ function createProjectWindow(root: string, url: string): ProjectWindow {
     width: 1280,
     height: 820,
     title: `${basename(root)} — Gabiro`,
+    icon: iconPath,
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
   win.webContents.setUserAgent(`${win.webContents.getUserAgent()} Gabiro/${app.getVersion()}`);
@@ -103,6 +106,7 @@ function showStart(): void {
     width: 560,
     height: 540,
     title: "Gabiro",
+    icon: iconPath,
     webPreferences: { preload: join(desktopDir, "preload.cjs"), contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
   guardNavigation(startWindow.webContents);
@@ -335,6 +339,8 @@ if (!app.requestSingleInstanceLock()) {
 
   void app.whenReady().then(async () => {
     if (app.isPackaged) app.setAsDefaultProtocolClient("gabiro");
+    // The packaged app gets its icon from the bundle; `electron .` would otherwise show Electron's.
+    else if (isMac) app.dock?.setIcon(iconPath);
     await rebuildMenus();
     ready = true;
     const links = [...pendingLinks.splice(0), ...process.argv.filter((a) => a.startsWith("gabiro://"))];

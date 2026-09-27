@@ -105,6 +105,7 @@ npm run dev:web   # canvas with hot reload; proxies the API to a running `gabiro
 ```bash
 npm run desktop:start  # build everything and run the app from the repo (any OS)
 npm run app:mac        # macOS only: package release/Gabiro-<version>-universal.dmg and .zip
+npm run icon           # after editing desktop/build/icon.svg: re-render the 1024 px icon.png
 ```
 
 The Electron main process is in `desktop/src/` and reuses the built server from `dist/`. `test/desktop/app.smoke.test.ts` drives the app with Playwright; it needs `npm run build && npm run desktop:build` and a display (on Linux, run the tests under `xvfb-run -a`). CI builds the `.dmg` on every push to `main` and pull request; pushing a `v<version>` tag that matches `package.json` publishes it to a GitHub Release.

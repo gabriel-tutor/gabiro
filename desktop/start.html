@@ -2,14 +2,14 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src data:" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:" />
     <title>Gabiro</title>
     <link rel="icon" href="data:," />
     <link rel="stylesheet" href="start.css" />
   </head>
   <body>
     <header>
-      <h1>Gabiro</h1>
+      <h1><img class="logo" src="build/icon.svg" alt="" />Gabiro</h1>
       <p>Open a project folder to see its boards. Boards live in the folder’s <code>.gabiro/</code> directory.</p>
     </header>
     <button id="open-folder" class="primary">Open Folder…</button>
