@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { canvasUrl, ensureCanvasServer, isLocalCanvasUrl, openInBrowser, startCanvasServer, type CanvasServer } from "../../src/server/index.js";
+import { canvasUrl, ensureCanvasServer, isHealthy, isLocalCanvasUrl, openInBrowser, startCanvasServer, type CanvasServer } from "../../src/server/index.js";
 import { GabiroError } from "../../src/core/index.js";
 import { tempRoot } from "../helpers.js";
 
@@ -107,6 +107,13 @@ describe("isLocalCanvasUrl", () => {
     expect(isLocalCanvasUrl("file:///etc/passwd")).toBe(false);
     expect(isLocalCanvasUrl("http://127.0.0.1:1/b/a b")).toBe(false);
     expect(isLocalCanvasUrl("javascript:alert(1)")).toBe(false);
+  });
+});
+
+describe("isHealthy", () => {
+  it("rejects non-local URLs without fetching", async () => {
+    const root = await tempRoot();
+    expect(await isHealthy("http://example.com:4477", root)).toBe(false);
   });
 });
 

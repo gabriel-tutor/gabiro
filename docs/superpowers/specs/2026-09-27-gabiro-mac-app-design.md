@@ -70,10 +70,10 @@ Gabiro.app (Electron)
 - **Confirmation:** if `root` is not already a recent project, the app asks first, with a native dialog ("Open the project at <path> in Gabiro?", with Open / Cancel), because any website can fire `gabiro://` links. Recent projects open without asking.
 
 ### 3.2 `gabiro_open_board` prefers the app
-- `src/server/launcher.ts` gains `openCanvas(root, boardId?)`, which returns `{ url, via: "app" | "browser" | "none" }`:
-  - **Uses the app** when `process.platform === "darwin"`, `GABIRO_NO_APP` and `GABIRO_NO_BROWSER` are unset, and `Gabiro.app` exists in `/Applications` or `~/Applications`. It runs `open "gabiro://open?root=…&board=…"`, with arguments passed as a list and no shell. It then polls `server.json` for a server that is healthy for this root, for up to 8 s, and returns its URL.
+- `src/server/launcher.ts` gains `openCanvas(root, boardId?)`, which returns `{ url?, via: "app" | "browser" | "none", appPending? }`:
+  - **Uses the app** when `process.platform === "darwin"`, `GABIRO_NO_APP` and `GABIRO_NO_BROWSER` are unset, and `Gabiro.app` exists in `/Applications` or `~/Applications`. It runs `open "gabiro://open?root=…&board=…"`, with arguments passed as a list and no shell.
   - **Otherwise** it behaves as today: `ensureCanvasServer`, then `openInBrowser`.
-  - If the app path is taken but no healthy server shows up in time, it falls back to the browser path.
+  - If macOS accepts the link (`open` exits 0), the app owns showing the board: `openCanvas` waits up to 8 s for the project's server to report its URL, and otherwise tells the agent the app may be waiting for the user to confirm. It falls back to the browser only if the link can't be handed to the app.
 - The detection and the opener are injectable for tests.
 - `gabiro_open_board` uses `openCanvas`. Its result text says where the board opened.
 
@@ -102,7 +102,7 @@ Gabiro.app (Electron)
 - **Canvas server fails to start** (e.g. EACCES on `.gabiro/`): a native error dialog names the folder and the reason. The start window stays open.
 - **Recent project folder is missing:** it is shown with a badge, and opening it shows "This folder no longer exists" with a Remove button.
 - **Deep link for a folder that doesn't exist, or with invalid parameters:** ignored with a log line. No dialog, because websites can fire these links.
-- **`openCanvas` doesn't get a healthy server from the app within 8 s:** it falls back to the browser flow. The tool result says so.
+- **`openCanvas` hands the link to the app but doesn't get a healthy server within 8 s:** it reports the app as pending instead of falling back to the browser. The tool result tells the agent to call `gabiro_open_board` again once the app is open.
 
 ## 6. Testing
 
@@ -110,7 +110,7 @@ Gabiro.app (Electron)
   - deep-link parsing: valid, relative, `..`, a missing dir, a bad board id, an unknown host, `gabiro://start`;
   - the recent-projects store: dedupe, cap, a corrupt file, atomic write;
   - `ProjectManager` with fake window and server factories: focus an existing window, reuse a healthy foreign server, start and own a server, close only owned servers, add to recents;
-  - `openCanvas`: the app present or absent, the env switches, the app fallback on timeout.
+  - `openCanvas`: the app present or absent, the env switches, the app pending when it doesn't serve in time, the browser fallback when handing the link to the app fails.
 - **Electron smoke test** (Playwright `_electron`): it launches the built app with a temp `userData` and project, and checks that the start window lists the project, that opening it renders the canvas, and that a deep link to a new folder asks for confirmation. It is skipped when no display is available; CI runs it under `xvfb-run`.
 - **macOS-only behaviour** (Dock menu, `open-url` delivery, Gatekeeper, the `bin/gabiro` script inside a real bundle) is covered by the macOS CI packaging job plus a manual first-launch checklist in the README.
 

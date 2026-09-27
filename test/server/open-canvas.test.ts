@@ -15,7 +15,7 @@ function fakes(overrides: OpenCanvasOptions = {}) {
     platform: "darwin",
     env: {},
     appInstalled: () => true,
-    openLink: (link) => (links.push(link), true),
+    openLink: async (link) => (links.push(link), true),
     ensure: async () => "http://127.0.0.1:4477",
     openBrowser: (url) => (browsed.push(url), true),
     appTimeoutMs: 300,
@@ -29,7 +29,7 @@ describe("openCanvas", () => {
     const root = await tempRoot();
     const { options, links, browsed } = fakes({ appTimeoutMs: 5000 });
     // The "app" starts a canvas server for the project when it receives the link.
-    options.openLink = (link) => {
+    options.openLink = async (link) => {
       links.push(link);
       void startCanvasServer({ root, port: 0, webDir: root }).then((s) => servers.push(s));
       return true;
@@ -40,12 +40,21 @@ describe("openCanvas", () => {
     expect(browsed).toEqual([]);
   });
 
-  it("falls back to the browser when the app doesn't serve the project in time", async () => {
+  it("reports the app as pending, and opens no browser, when the app doesn't serve the project in time", async () => {
     const root = await tempRoot();
     const { options, links, browsed } = fakes();
     const result = await openCanvas(root, undefined, options);
     expect(links).toHaveLength(1);
-    expect(result).toEqual({ url: "http://127.0.0.1:4477", via: "browser", appTimedOut: true });
+    expect(result).toEqual({ via: "app", appPending: true });
+    expect(browsed).toEqual([]);
+  });
+
+  it("falls back to the browser when handing the link to the app fails", async () => {
+    const root = await tempRoot();
+    const { options, links, browsed } = fakes({ openLink: async () => false });
+    const result = await openCanvas(root, undefined, options);
+    expect(links).toEqual([]);
+    expect(result).toEqual({ url: "http://127.0.0.1:4477", via: "browser" });
     expect(browsed).toEqual(["http://127.0.0.1:4477"]);
   });
 

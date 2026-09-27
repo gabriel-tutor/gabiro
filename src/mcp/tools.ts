@@ -20,11 +20,15 @@ export const defaultCanvas: CanvasAccess = {
 };
 
 /** What gabiro_open_board tells the agent about where the canvas opened. */
-function openedText({ url, via, appTimedOut }: OpenCanvasResult): string {
-  const fallback = appTimedOut ? " (The Gabiro app didn't show it within 8 seconds.)" : "";
-  if (via === "app") return `Opened ${url} in the Gabiro app.`;
-  if (via === "browser") return `Opened ${url} in the browser.${fallback}`;
-  return `The canvas is running at ${url} — open it in a browser.${fallback}`;
+function openedText({ url, via, appPending }: OpenCanvasResult): string {
+  if (via === "app") {
+    if (appPending) {
+      return "Asked the Gabiro app to show the canvas. It may be waiting for you to confirm opening this folder; call gabiro_open_board again once it's open to get the URL.";
+    }
+    return `Opened ${url} in the Gabiro app.`;
+  }
+  if (via === "browser") return `Opened ${url} in the browser.`;
+  return `The canvas is running at ${url} — open it in a browser.`;
 }
 
 type Payload = { text: string; data: Record<string, unknown> };
@@ -243,7 +247,12 @@ export function registerTools(server: McpServer, service: BoardService, canvas: 
         const result = await canvas.show(service.root, boardId);
         return {
           text: openedText(result),
-          data: { url: result.url, opened: result.via !== "none", via: result.via, ...(result.appTimedOut ? { appTimedOut: true } : {}) },
+          data: {
+            ...(result.url ? { url: result.url } : {}),
+            opened: result.via !== "none",
+            via: result.via,
+            ...(result.appPending ? { appPending: true } : {}),
+          },
         };
       }),
   );

@@ -42,8 +42,14 @@ export function isProcessAlive(pid: number): boolean {
   }
 }
 
-/** True if a gabiro canvas server for exactly this project root answers at `url`. */
+/** Returns true only for URLs matching exactly the local canvas URL pattern (127.0.0.1, localhost, or [::1]). */
+export function isLocalCanvasUrl(url: string): boolean {
+  return /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d{1,5})?(\/[A-Za-z0-9._~\/-]*)?$/.test(url);
+}
+
+/** True if a gabiro canvas server for exactly this project root answers at `url`. Non-local URLs are never trusted. */
 export async function isHealthy(url: string, root: string): Promise<boolean> {
+  if (!isLocalCanvasUrl(url)) return false;
   try {
     const res = await fetch(`${url}/api/health`, { signal: AbortSignal.timeout(1000) });
     if (!res.ok) return false;

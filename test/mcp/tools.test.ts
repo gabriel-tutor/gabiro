@@ -156,11 +156,13 @@ describe("gabiro MCP server", () => {
     expect(inApp.text(r)).toBe("Opened http://127.0.0.1:4477 in the Gabiro app.");
 
     const { canvas } = fakeCanvas();
-    canvas.show = async () => ({ url: "http://127.0.0.1:4477", via: "browser", appTimedOut: true });
-    const fellBack = await connect(canvas);
-    const f = await fellBack.call("gabiro_open_board");
-    expect(f.structuredContent).toEqual({ url: "http://127.0.0.1:4477", opened: true, via: "browser", appTimedOut: true });
-    expect(fellBack.text(f)).toBe("Opened http://127.0.0.1:4477 in the browser. (The Gabiro app didn't show it within 8 seconds.)");
+    canvas.show = async () => ({ via: "app", appPending: true });
+    const pending = await connect(canvas);
+    const f = await pending.call("gabiro_open_board");
+    expect(f.structuredContent).toEqual({ opened: true, via: "app", appPending: true });
+    expect(pending.text(f)).toBe(
+      "Asked the Gabiro app to show the canvas. It may be waiting for you to confirm opening this folder; call gabiro_open_board again once it's open to get the URL.",
+    );
 
     const quiet = await connect(fakeCanvas(undefined, "none").canvas);
     const q = await quiet.call("gabiro_open_board");
