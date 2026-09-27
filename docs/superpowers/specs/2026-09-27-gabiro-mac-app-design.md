@@ -81,7 +81,7 @@ Gabiro.app (Electron)
 - The bundle includes `Contents/Resources/bin/gabiro`, a POSIX shell script that runs `ELECTRON_RUN_AS_NODE=1 "<bundle>/Contents/MacOS/Gabiro" "<bundle>/Contents/Resources/app.asar/dist/cli.js" "$@"`, resolving `<bundle>` from the script's own path.
 - The MCP server and `gabiro serve` then run on Electron's built-in Node, with no system Node needed. When the MCP server spawns a detached `gabiro serve`, the child inherits `ELECTRON_RUN_AS_NODE`.
 - **Menu → Set Up Agent…** opens a native dialog showing both snippets, with copy buttons for:
-  - Claude Code: `claude mcp add gabiro -- "/Applications/Gabiro.app/Contents/Resources/bin/gabiro" mcp`, using the bundle's actual path;
+  - Claude Code: `claude mcp add gabiro -- /Applications/Gabiro.app/Contents/Resources/bin/gabiro mcp`, using the bundle's actual path (shell-quoted only when it needs it, e.g. for spaces);
   - the JSON `mcpServers` snippet for Claude Desktop and Cursor. These clients don't start the server in the project folder, so the snippet passes `--root /path/to/your/project` for the user to fill in.
 
 ## 4. Build and release
