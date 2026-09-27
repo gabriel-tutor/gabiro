@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-25
 **Status:** Approved
-**Plans:** `docs/superpowers/plans/2026-09-25-gabiro-plan-1-mcp-server.md` (core → MCP, done), `docs/superpowers/plans/2026-09-26-gabiro-plan-2-live-canvas.md` (read-only live canvas + `gabiro_open_board`). Plan 3: manual editing.
+**Plans:** `docs/superpowers/plans/2026-09-25-gabiro-plan-1-mcp-server.md` (core → MCP, done), `docs/superpowers/plans/2026-09-26-gabiro-plan-2-live-canvas.md` (read-only live canvas + `gabiro_open_board`, done), `docs/superpowers/plans/2026-09-27-gabiro-plan-3-canvas-editing.md` (manual editing). Plan 4: Mac Dock app.
 
 ## 1. Summary
 
@@ -168,7 +168,7 @@ All tools are prefixed `gabiro_`, take Zod-validated input, and return a short t
 - **Home** (`/`): board list and "New board" (title + kind).
 - **Board** (`/b/:boardId`): React Flow canvas with pan/zoom, minimap, fit-view, light/dark theme.
 - **Rendering:** a custom React component per node type (service box, DB cylinder, queue, cache, cloud for external, diamond for decision, ERD table with field rows, sticky, kanban column/card, sequence lifeline with ordered message rows). Groups are drawn as labelled translucent zones/swimlanes. Edges: solid = sync, dashed = async/return, arrowheads, labels, crow's-foot for ERD cardinality.
-- **Manual editing:** drag (sets `pinned`), double-click to rename, a toolbar palette to add nodes of allowed types, drag between handles to connect, Delete key to remove, side panel for description/tech/fields/tags, Auto-layout button, undo/redo for the user's own edits.
+- **Manual editing (Plan 3):** drag (sets `pinned`; kanban cards change column/slot, sequence participants reorder), double-click to rename (focuses the side panel), a toolbar palette to add nodes of allowed types (placed at the view centre, cascading to a free spot), drag from a handle onto another node to connect, Delete key to remove, side panel for label/type/group/tech/description/tags/ERD fields and edge label/type/line/cardinality/order, Auto-layout button (`POST /api/boards/:id/layout`), undo/redo for the user's own edits (computed by diffing boards; `update_node` accepts `pinned: null` to clear a pin).
 - **Transport:** the browser sends `{type:"subscribe", boardId}` (or `{type:"subscribe-list"}`) over the `/ws` WebSocket and receives full board snapshots (boards are small; no diffing in v1), or `board-error` for missing/corrupt boards. Edits (Plan 3) are sent as ops via `POST /api/boards/:id/ops` with `expectedRevision`. Nodes whose content changed (layout moves excluded) flash briefly.
 - **Conflict in the browser:** on a revision conflict the browser reloads the latest board and re-applies the user's pending op once; if it still fails, it shows the error.
 
