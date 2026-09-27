@@ -126,6 +126,17 @@ export function moveOps(board: Board, nodeId: string, position: Position): Op[] 
   return [{ op: "update_node", id: nodeId, position: { x: Math.round(position.x), y: Math.round(position.y) }, pinned: true }];
 }
 
+/**
+ * Ops to change a node's type, plus what the new type requires: only ERD entities keep fields, and
+ * a kanban card must be in a column (the first one, when the node has none).
+ */
+export function typeChangeOps(board: Board, node: BoardNode, type: string): Op[] {
+  const op: Op & { op: "update_node" } = { op: "update_node", id: node.id, type: type as BoardNode["type"] };
+  if (type !== "entity" && node.fields !== undefined) op.fields = null;
+  if (board.kind === "kanban" && type === "card" && node.groupId === undefined && board.groups[0]) op.groupId = board.groups[0].id;
+  return [op];
+}
+
 /** Ops to delete nodes (their edges go with them) and edges. */
 export function deleteOps(board: Board, nodeIds: string[], edgeIds: string[]): Op[] {
   const nodes = new Set(nodeIds.filter((id) => board.nodes.some((n) => n.id === id)));

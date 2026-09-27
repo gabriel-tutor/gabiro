@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyOps, type Board } from "../../src/core/index.js";
 import { layoutBoard } from "../../src/layout/index.js";
-import { addNodeOps, connectOps, deleteOps, diffOps, freeSpot, moveOps, uniqueId } from "../../web/src/edits.js";
+import { addNodeOps, connectOps, deleteOps, diffOps, freeSpot, moveOps, typeChangeOps, uniqueId } from "../../web/src/edits.js";
 import { FIXTURES } from "../fixtures/boards.js";
 
 const laid = (b: Board) => layoutBoard(b);
@@ -93,6 +93,25 @@ describe("moveOps", () => {
     const after = applyOps(board, moveOps(board, "db", { x: -50, y: 0 }));
     const order = after.nodes.filter((n) => n.type === "participant").sort((a, b) => a.order! - b.order!);
     expect(order.map((n) => n.id)).toEqual(["db", "client", "api"]);
+  });
+});
+
+describe("typeChangeOps", () => {
+  it("clears fields when a node stops being an ERD entity", () => {
+    const users = FIXTURES.erd.nodes.find((n) => n.id === "users")!;
+    const ops = typeChangeOps(FIXTURES.erd, users, "sticky");
+    expect(ops).toEqual([{ op: "update_node", id: "users", type: "sticky", fields: null }]);
+    expect(applyOps(FIXTURES.erd, ops).nodes.find((n) => n.id === "users")).not.toHaveProperty("fields");
+  });
+
+  it("puts a node that becomes a kanban card into the first column", () => {
+    const board = applyOps(FIXTURES.kanban, [{ op: "add_node", id: "idea", type: "sticky", label: "Idea" }]);
+    const idea = board.nodes.find((n) => n.id === "idea")!;
+    const ops = typeChangeOps(board, idea, "card");
+    expect(ops).toEqual([{ op: "update_node", id: "idea", type: "card", groupId: "todo" }]);
+    expect(() => applyOps(board, ops)).not.toThrow();
+    const core = board.nodes.find((n) => n.id === "core")!;
+    expect(typeChangeOps(board, core, "sticky")).toEqual([{ op: "update_node", id: "core", type: "sticky" }]);
   });
 });
 

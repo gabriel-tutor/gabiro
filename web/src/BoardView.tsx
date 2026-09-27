@@ -87,6 +87,23 @@ export function BoardView({ boardId }: { boardId: string }) {
   );
 }
 
+/**
+ * `next` nodes, keeping what the user has selected in `prev` and React Flow's measured size. A node
+ * without `measured` makes React Flow drop its handle positions and re-measure it; until then its
+ * edges aren't drawn and its handles don't connect.
+ */
+function carryOver(prev: Node[], next: Node[]): Node[] {
+  const old = new Map(prev.map((n) => [n.id, n]));
+  return next.map((n) => {
+    const p = old.get(n.id);
+    if (!p) return n;
+    return { ...n, ...(p.selected ? { selected: true } : {}), ...(p.measured ? { measured: p.measured } : {}) };
+  });
+}
+
+/** Kanban cards and sequence participants take a slot among their siblings; only the dragged one moves. */
+const ONE_AT_A_TIME = new Set<Board["kind"]>(["kanban", "sequence"]);
+
 const isTyping = (target: EventTarget | null) =>
   target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
 
@@ -98,18 +115,34 @@ function Canvas({ board, changed, editor, editable }: { board: Board; changed: S
   const { screenToFlowPosition } = useReactFlow();
   const container = useRef<HTMLDivElement>(null);
   const labelRef = useRef<HTMLInputElement>(null);
+  const flowRef = useRef(flow);
+  flowRef.current = flow;
 
-  // Take every new board, keeping what the user has selected.
+  // Take every new board, keeping what the user has selected (and React Flow's measurements).
   useEffect(() => {
-    setNodes((prev) => {
-      const selected = new Set(prev.filter((n) => n.selected).map((n) => n.id));
-      return flow.nodes.map((n) => (selected.has(n.id) ? { ...n, selected: true } : n));
-    });
+    setNodes((prev) => carryOver(prev, flow.nodes));
     setEdges((prev) => {
       const selected = new Set(prev.filter((e) => e.selected).map((e) => e.id));
       return flow.edges.map((e) => (selected.has(e.id) ? { ...e, selected: true } : e));
     });
   }, [flow]);
+
+  // Forget a selection whose node or edge is gone (deleted here, by undo, or by the agent).
+  useEffect(() => {
+    if (!selection) return;
+    const exists = selection.kind === "node" ? board.nodes.some((n) => n.id === selection.id) : board.edges.some((e) => e.id === selection.id);
+    if (!exists) setSelection(undefined);
+  }, [board, selection]);
+
+  /**
+   * Saves a drag. A drop that changes nothing (or can't be saved) puts the nodes back where the
+   * board has them; otherwise the saved board re-lays them out.
+   */
+  const onNodeDragStop = async (primary: Node, dragged: Node[]) => {
+    const moved = (ONE_AT_A_TIME.has(board.kind) ? [primary] : dragged).filter((n) => !n.id.startsWith("group:"));
+    const ops = moved.flatMap((n) => moveOps(board, n.id, n.position));
+    if (!ops.length || !(await editor.apply(ops))) setNodes((prev) => carryOver(prev, flowRef.current.nodes));
+  };
 
   // Deletions go through the board (onDelete), never straight into local state.
   const onNodesChange = useCallback((changes: NodeChange[]) => {
@@ -144,19 +177,20 @@ function Canvas({ board, changed, editor, editable }: { board: Board; changed: S
   };
 
   // Keyboard undo/redo, except while typing in a field.
+  const { undo, redo } = editor;
   useEffect(() => {
     if (!editable) return;
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey) || isTyping(e.target)) return;
       const key = e.key.toLowerCase();
-      if (key === "z" && !e.shiftKey) void editor.undo();
-      else if ((key === "z" && e.shiftKey) || key === "y") void editor.redo();
+      if (key === "z" && !e.shiftKey) void undo();
+      else if ((key === "z" && e.shiftKey) || key === "y") void redo();
       else return;
       e.preventDefault();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [editable, editor]);
+  }, [editable, undo, redo]);
 
   return (
     <div className="gb-editor">
@@ -164,8 +198,8 @@ function Canvas({ board, changed, editor, editable }: { board: Board; changed: S
         <Toolbar
           kind={board.kind}
           onAdd={addNode}
-          onUndo={() => void editor.undo()}
-          onRedo={() => void editor.redo()}
+          onUndo={() => void undo()}
+          onRedo={() => void redo()}
           onLayout={() => void editor.autoLayout()}
           canUndo={editor.canUndo}
           canRedo={editor.canRedo}
@@ -181,9 +215,7 @@ function Canvas({ board, changed, editor, editable }: { board: Board; changed: S
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onSelectionChange={onSelectionChange}
-            onNodeDragStop={(_e, _node, dragged) =>
-              void editor.apply(dragged.filter((n) => !n.id.startsWith("group:")).flatMap((n) => moveOps(board, n.id, n.position)))
-            }
+            onNodeDragStop={(_e, node, dragged) => void onNodeDragStop(node, dragged)}
             onConnect={(c) => c.source && c.target && void editor.apply(connectOps(board, c.source, c.target))}
             onConnectEnd={onConnectEnd}
             onDelete={({ nodes: ns, edges: es }) =>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { KIND_RULES, type Board, type BoardEdge, type BoardNode, type Field, type Op } from "../../src/core/index.js";
-import { deleteOps } from "./edits.js";
+import { deleteOps, typeChangeOps } from "./edits.js";
 
 export type Selection = { kind: "node"; id: string } | { kind: "edge"; id: string };
 
@@ -19,9 +19,10 @@ const orNull = (text: string) => (text.trim() === "" ? null : text.trim());
 
 /**
  * A text field's draft: follows the board's value (e.g. when an agent edits it) except while the
- * user is typing in it, and saves through `commit` when it loses focus.
+ * user is typing in it, and saves through `commit` when it loses focus. A commit that returns
+ * `false` rejected the draft (e.g. an empty label), which then goes back to the board's value.
  */
-function useDraft(value: string, commit: (draft: string) => void) {
+function useDraft(value: string, commit: (draft: string) => boolean | void) {
   const [draft, setDraft] = useState(value);
   const focused = useRef(false);
   useEffect(() => {
@@ -35,7 +36,7 @@ function useDraft(value: string, commit: (draft: string) => void) {
     },
     onBlur: () => {
       focused.current = false;
-      if (draft !== value) commit(draft);
+      if (draft !== value && commit(draft) === false) setDraft(value);
     },
   };
 }
@@ -52,7 +53,10 @@ export function SidePanel({ board, selection, onApply, labelRef }: SidePanelProp
 
 function NodeForm({ board, node, onApply, labelRef }: { board: Board; node: BoardNode } & Omit<SidePanelProps, "board" | "selection">) {
   const update = (changes: Record<string, unknown>) => onApply([{ op: "update_node", id: node.id, ...changes } as Op]);
-  const label = useDraft(node.label, (v) => v.trim() && update({ label: v.trim() }));
+  const label = useDraft(node.label, (v) => {
+    if (!v.trim()) return false;
+    update({ label: v.trim() });
+  });
   const tech = useDraft(node.tech ?? "", (v) => update({ tech: orNull(v) }));
   const description = useDraft(node.description ?? "", (v) => update({ description: orNull(v) }));
   const tags = useDraft((node.tags ?? []).join(", "), (v) => {
@@ -70,7 +74,7 @@ function NodeForm({ board, node, onApply, labelRef }: { board: Board; node: Boar
       </label>
       <label>
         Type
-        <select value={node.type} onChange={(e) => update({ type: e.target.value })}>
+        <select value={node.type} onChange={(e) => onApply(typeChangeOps(board, node, e.target.value))}>
           {rules.nodeTypes.map((t) => (
             <option key={t} value={t}>
               {t}
@@ -153,7 +157,11 @@ function FieldsEditor({ fields, onChange }: { fields: Field[]; onChange(fields: 
 function EdgeForm({ board, edge, onApply, labelRef }: { board: Board; edge: BoardEdge } & Omit<SidePanelProps, "board" | "selection">) {
   const update = (changes: Record<string, unknown>) => onApply([{ op: "update_edge", id: edge.id, ...changes } as Op]);
   const label = useDraft(edge.label ?? "", (v) => update({ label: orNull(v) }));
-  const order = useDraft(String(edge.order ?? ""), (v) => Number.isInteger(Number(v)) && Number(v) >= 1 && update({ order: Number(v) }));
+  const order = useDraft(String(edge.order ?? ""), (v) => {
+    const n = Number(v);
+    if (v.trim() === "" || !Number.isInteger(n) || n < 1) return false;
+    update({ order: n });
+  });
   const name = (id: string) => board.nodes.find((n) => n.id === id)?.label ?? id;
 
   return (
