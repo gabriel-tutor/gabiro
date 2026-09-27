@@ -1,0 +1,31 @@
+# Packages Gabiro.app: `npm run app:mac` (macOS only). Ad-hoc signed, not notarized; see README → Mac app.
+appId: dev.gabiro.app
+productName: Gabiro
+directories:
+  output: release
+files:
+  - package.json
+  - dist/**
+  - desktop/dist/**
+  - desktop/start.html
+  - desktop/start.css
+  - desktop/start.js
+  - desktop/preload.cjs
+extraResources:
+  - from: desktop/bin/gabiro
+    to: bin/gabiro
+protocols:
+  - name: Gabiro
+    schemes: [gabiro]
+mac:
+  category: public.app-category.developer-tools
+  # Ad-hoc signature: without one, Apple Silicon reports a downloaded app as "damaged".
+  identity: "-"
+  hardenedRuntime: false
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  target:
+    - target: dmg
+      arch: universal
+    - target: zip
+      arch: universal
+publish: null
