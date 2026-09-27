@@ -39,6 +39,20 @@ A canvas started by `gabiro_open_board` stops after 30 minutes with no canvas ta
 
 The canvas updates live as the agent changes a board, and highlights what just changed. The same diagrams are in `docs/diagrams/<board>.md`, which renders on GitHub and in VS Code's Markdown preview.
 
+## Edit in the canvas
+
+You and the agent edit the same board, and both see each other's changes live.
+
+- **Move**: drag a node. It stays where you drop it (it's pinned), even when the agent re-runs the layout. Drag kanban cards between columns, and sequence participants to reorder them.
+- **Add**: pick a type from the toolbar. The palette only offers types the board kind allows.
+- **Rename and details**: double-click a node, or select it, then edit the label, type, group, tech, description, tags and ERD fields in the side panel. Fields save when they lose focus or you press Enter.
+- **Connect**: drag from a node's handle (shown on hover) onto another node.
+- **Delete**: select, then press Delete or Backspace.
+- **Undo / redo**: ⌘Z / ⇧⌘Z (Ctrl+Z / Ctrl+Shift+Z elsewhere). This undoes only your own edits.
+- **Auto-layout**: tidy everything except the nodes you pinned.
+
+If the agent changes the board while you're editing, your edit is re-applied on top of its change. If that isn't possible (for example, the agent deleted the node you were editing), you get a message explaining why.
+
 ## Tools
 
 | Tool | What it does |
