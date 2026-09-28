@@ -21,6 +21,7 @@
     "test": "vitest run",
     "dev:web": "vite",
     "desktop:build": "tsc -p desktop",
+    "icon": "node desktop/build/render-icon.mjs",
     "desktop:start": "npm run build && npm run desktop:build && electron .",
     "app:mac": "npm run build && npm run desktop:build && electron-builder --mac --universal --publish never"
   },

@@ -11,6 +11,8 @@ files:
   - desktop/start.css
   - desktop/start.js
   - desktop/preload.cjs
+  - desktop/build/icon.svg
+  - desktop/build/icon.png
 # bin/gabiro runs the app binary as Node (ELECTRON_RUN_AS_NODE): keep Electron's RunAsNode fuse enabled (the default).
 extraResources:
   - from: desktop/bin/gabiro
@@ -20,6 +22,8 @@ protocols:
     schemes: [gabiro]
 mac:
   category: public.app-category.developer-tools
+  # Rendered from desktop/build/icon.svg by `npm run icon`; electron-builder converts it to .icns.
+  icon: desktop/build/icon.png
   # Ad-hoc signature: without one, Apple Silicon reports a downloaded app as "damaged".
   identity: "-"
   hardenedRuntime: false

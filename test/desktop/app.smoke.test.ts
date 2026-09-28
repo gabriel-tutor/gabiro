@@ -53,6 +53,8 @@ describe.skipIf(!built || !hasDisplay)("Gabiro desktop app (run `npm run build &
     const start = await windowMatching(electron, /start\.html$/);
     await expect.poll(() => start.locator(".name").allTextContents()).toEqual(["shop"]);
     await expect.poll(() => start.locator(".boards").allTextContents()).toEqual(["0 boards"]);
+    // The logo loads under the start window's CSP.
+    await expect.poll(() => start.locator(".logo").evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
 
     await start.locator(".project").click();
     const canvas = await windowMatching(electron, /^http:\/\/127\.0\.0\.1:\d+\/$/);

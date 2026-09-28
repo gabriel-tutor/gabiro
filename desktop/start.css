@@ -27,8 +27,16 @@ body {
   background: var(--surface);
 }
 h1 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   font-size: 22px;
   margin: 0 0 4px;
+}
+.logo {
+  width: 44px;
+  height: 44px;
+  margin-left: -4px;
 }
 h2 {
   font-size: 13px;
